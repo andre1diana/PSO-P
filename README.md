@@ -1,0 +1,1 @@
+# todo de facut conexiunea server-client | server-agent -> sockets
