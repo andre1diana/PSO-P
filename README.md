@@ -7,7 +7,7 @@
 1. Server centralizat care primeste requesturi cu sarcini de executie (prin socket)
 2. Agent - se instaleaza pe o statie, se înregistrează în server, primește sarcini (prin socketsi).
 
-## Functionalitati:
+## 2. Functionalitati:
   
 SERVER:
 - Primește sarcini de la client
@@ -32,3 +32,5 @@ CLIENT:
 AUTENTIFICARE:
 - Clientii se vor conecta si autentifica pe baza user name-ului si parolei. Clientii vor dispune de facilitati de a isi crea un cont.
 - Agentii se vor conecta automat la server pe baza unui ID. Un administrator se va ocupa de adaugarea agentilor si gestionarea ID-urilor.
+
+## 3. Agent placa ESP32
