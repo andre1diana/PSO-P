@@ -7,8 +7,6 @@
 1. Server centralizat care primeste requesturi cu sarcini de executie (prin socket)
 2. Agent - se instaleaza pe o statie, se înregistrează în server, primește sarcini (prin socketsi).
 
-        ceva
-
 ## Functionalitati:
   
 SERVER:
