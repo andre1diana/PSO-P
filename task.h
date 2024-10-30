@@ -20,8 +20,3 @@ typedef struct TASK_DATA{
     uint8_t task_type;  // 0 - executable
                         // 1 - bash command
 }TASK_DATA;
-
-struct message;
-
-massage.taskdata =...
-message.exe = 
