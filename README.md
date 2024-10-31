@@ -16,6 +16,7 @@ SERVER:
 - Primeste rezultatul de la agent cand acesta termina
 - Agentul a terminat - il adaugam in coada
 - Trimitem rezultatul la client
+    - Return-ul rezultatului sincron/asincron, dupa preferinta Clientului.
 
 AGENT:
 - Primeste sarcini de la server
@@ -30,7 +31,12 @@ CLIENT:
 - Metoda de conectare la server
 
 AUTENTIFICARE:
-- Clientii se vor conecta si autentifica pe baza user name-ului si parolei. Clientii vor dispune de facilitati de a isi crea un cont.
 - Agentii se vor conecta automat la server pe baza unui ID. Un administrator se va ocupa de adaugarea agentilor si gestionarea ID-urilor.
 
 ## 3. Agent placa ESP32  (Daca se poate)
+
+## 4. Gestiunea task-uriloe
+- Structuri de date stocate in server care vor contine informatii despre Clienti, Agenti si Task-uri.
+- In structura de date a Agentilor se vor afla flag-uri despre capabilitatile lor si disponibilitate.
+- In structura de date a Task-urilor se vor afla flag-uri despre cerintele lor.
+- Cu ajutorul acestor structuri, Server-ul va trimite Task-uri agentilor disponibili si capabili sa execute Task-ul respectiv.
