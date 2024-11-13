@@ -11,14 +11,3 @@ typedef struct AGENT_DATA{
                     */
     
 }AGENT_DATA;
-
-//tasks structure
-
-//id for task
-//client that req the task
-//agent assigned for task
-//status
-//result ?  -- in loc sa tinem agentul blocat pana cere clientul rezultatul taskului
-//          -- nu mai avem nevoie de return_ready
-
-//coada de clienti 

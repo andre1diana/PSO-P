@@ -17,6 +17,6 @@ typedef struct TASK_DATA{
     uint32_t data_size;
     uint32_t executable_offset;
     uint32_t data_offset;
-    uint8_t task_type;  // 0 - executable
-                        // 1 - bash command
+    uint8_t  task_type;  // 0 - executable
+                         // 1 - bash command
 }TASK_DATA;
