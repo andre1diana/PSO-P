@@ -20,7 +20,7 @@ int task_count = 0;
 
 typedef struct sockaddr_in sockaddr_in;
 
-// Funcție pentru găsirea unui agent disponibil
+// Functie pentru gasirea unui agent disponibil
 Agent* find_available_agent(Task* task) {
     for(int i = 0; i < num_agents; i++) {
         pthread_mutex_lock(&agents[i].lock);
@@ -184,14 +184,9 @@ int main() {
     struct sockaddr_in address;
     pthread_t thread_id;
     
-    // Inițializare socket
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-    
-    bind(server_fd, (struct sockaddr *)&address, sizeof(address));
-    listen(server_fd, 3);
+    // Initializare socket
+    InitSockets(server_fd, socket, &address);
+    Listen(server_fd, &address);
     
     while(1) {
         int new_socket = accept(server_fd, NULL, NULL);

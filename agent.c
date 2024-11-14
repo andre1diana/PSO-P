@@ -18,12 +18,10 @@ char agent_id[32];
 AgentCapabilities capabilities;
 
 void execute_task(Task* task) {
-    // Implementare execuție task
     char cmd[BUFFER_SIZE];
     snprintf(cmd, BUFFER_SIZE, "%s %s", task->executable_path, task->arguments);
     
     FILE* fp = popen(cmd, "r");
-    // Citire rezultat și trimitere înapoi la server
     pclose(fp);
 }
 
@@ -93,9 +91,8 @@ void ExecuteTask(char* command[])
     int status;
     int redirect_index = -1;
     int pipe_index = -1;
-    int pipefd[2]; // Descriptorii pentru pipe
+    int pipefd[2];
 
-    // Detectăm redirecționarea și pipe-urile
     for (int i = 0; command[i] != NULL; i++) {
         if (strcmp(command[i], ">") == 0) {
             redirect_index = i;
@@ -106,7 +103,6 @@ void ExecuteTask(char* command[])
         }
     }
 
-    // Creăm un pipe dacă e nevoie
     if (pipe_index != -1) {
         if (pipe(pipefd) == -1) {
             perror("pipe error");
@@ -116,15 +112,13 @@ void ExecuteTask(char* command[])
 
     pid1 = fork();
     if (pid1 == 0) {
-        // Proces copil pentru comanda din stânga pipe-ului
         if (pipe_index != -1) {
-            // Redirecționăm output-ul comenzii în pipe
             dup2(pipefd[1], STDOUT_FILENO);
-            close(pipefd[0]);  // Închidem capătul de citire al pipe-ului
-            close(pipefd[1]);  // Nu mai avem nevoie de capătul de scriere al pipe-ului
+            close(pipefd[0]);  
+            close(pipefd[1]);  
         }
 
-        // Dacă există redirecționare de output, tratăm asta
+        
         if (redirect_index != -1) {
             char *filename = command[redirect_index + 1];
             if (filename == NULL) {
@@ -138,13 +132,12 @@ void ExecuteTask(char* command[])
                 exit(EXIT_FAILURE);
             }
 
-            dup2(fd, STDOUT_FILENO);  // Redirecționăm stdout în fișier
+            dup2(fd, STDOUT_FILENO);  
             close(fd);
-            command[redirect_index] = NULL;  // Tăiem comanda la poziția de redirecționare
+            command[redirect_index] = NULL; 
         }
 
-        // Executăm prima comandă
-        command[pipe_index] = NULL;  // Tăiem comanda la poziția pipe-ului
+        command[pipe_index] = NULL;  
         if (execvp(command[0], command) == -1) {
             perror("execvp error");
             exit(EXIT_FAILURE);
@@ -156,12 +149,10 @@ void ExecuteTask(char* command[])
     if (pipe_index != -1) {
         pid2 = fork();
         if (pid2 == 0) {
-            // Proces copil pentru comanda din dreapta pipe-ului
-            dup2(pipefd[0], STDIN_FILENO);  // Redirecționăm input-ul din pipe
-            close(pipefd[1]);  // Închidem capătul de scriere al pipe-ului
-            close(pipefd[0]);  // Închidem capătul de citire al pipe-ului după dup2
+            dup2(pipefd[0], STDIN_FILENO);  
+            close(pipefd[1]);  
+            close(pipefd[0]);
 
-            // Executăm a doua comandă
             if (execvp(command[pipe_index + 1], &command[pipe_index + 1]) == -1) {
                 perror("execvp error");
                 exit(EXIT_FAILURE);
@@ -171,7 +162,6 @@ void ExecuteTask(char* command[])
         }
     }
 
-    // În procesul părinte, așteptăm ambele procese să se termine
     close(pipefd[0]);
     close(pipefd[1]);
     waitpid(pid1, &status, 0);
@@ -184,7 +174,7 @@ void agent_main_loop(int socket) {
     MessageHeader header;
     char payload_buffer[MAX_PAYLOAD_SIZE];
     
-    // Înregistrare agent
+    // inregistrare agent
     example_agent_registration(socket, "AGENT001");
     
     while(1) {
@@ -216,12 +206,10 @@ if(argc != 2) {
     
     strcpy(agent_id, argv[1]);
     
-    // Inițializare capabilități
     capabilities.can_execute_binary = 1;
     capabilities.has_gpu = 0;
     capabilities.memory_mb = 1024;
     
-    // Conectare la server și înregistrare
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in server_addr;
     
@@ -231,13 +219,11 @@ if(argc != 2) {
     
     connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
     
-    // Loop principal pentru primirea și executarea task-urilor
     char buffer[BUFFER_SIZE];
     while(1) {
         int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
         if(read_size <= 0) break;
         
-        // Procesare task și execuție
         Task* task = (Task*)buffer;
         execute_task(task);
     }
