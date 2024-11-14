@@ -119,33 +119,5 @@ int receive_message(int socket, MessageHeader* header, void* payload, size_t max
     return 0;
 }
 
-// Exemple de utilizare pentru diferite scenarii
-void example_agent_registration(int socket, const char* agent_id) {
-    AgentRegistration reg = {0};
-    strncpy(reg.agent_id, agent_id, sizeof(reg.agent_id) - 1);
-    reg.capabilities_flags = 0x1234;  // Example flags
-    reg.memory_available = 1024 * 1024 * 1024;  // 1GB
-    
-    send_message(socket, MSG_AGENT_REGISTER, &reg, sizeof(reg));
-}
-
-void example_submit_task(int socket, const char* command, const char* args) {
-    TaskSubmission task = {0};
-    strncpy(task.command, command, sizeof(task.command) - 1);
-    strncpy(task.arguments, args, sizeof(task.arguments) - 1);
-    task.requirements_flags = 0x5678;  // Example flags
-    task.timeout = 30;  // 30 seconds
-    
-    send_message(socket, MSG_TASK_SUBMIT, &task, sizeof(task));
-}
-
-void example_send_result(int socket, uint32_t task_id, const char* result) {
-    TaskResult res = {0};
-    res.task_id = task_id;
-    res.status_code = 0;
-    strncpy(res.result, result, sizeof(res.result) - 1);
-    
-    send_message(socket, MSG_TASK_RESULT, &res, sizeof(res));
-}
 
 #endif

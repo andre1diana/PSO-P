@@ -11,7 +11,6 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
-// Structuri globale pentru server
 Agent agents[MAX_AGENTS];
 Task task_queue[MAX_TASKS];
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -20,7 +19,6 @@ int task_count = 0;
 
 typedef struct sockaddr_in sockaddr_in;
 
-// Functie pentru gasirea unui agent disponibil
 Agent* find_available_agent(Task* task) {
     for(int i = 0; i < num_agents; i++) {
         pthread_mutex_lock(&agents[i].lock);
@@ -36,7 +34,6 @@ Agent* find_available_agent(Task* task) {
     return NULL;
 }
 
-// Handler pentru conexiuni noi
 void* handle_connection(void* socket_desc) {
     int sock = *(int*)socket_desc;
     char buffer[BUFFER_SIZE];
@@ -45,8 +42,7 @@ void* handle_connection(void* socket_desc) {
         int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
         if(read_size <= 0) break;
         
-        // Procesare mesaj...
-        // Implementare pentru diferite tipuri de mesaje
+        // Procesare mesaj
     }
     
     return NULL;
@@ -185,8 +181,8 @@ int main() {
     pthread_t thread_id;
     
     // Initializare socket
-    InitSockets(server_fd, socket, &address);
-    Listen(server_fd, &address);
+    InitSockets(&server_fd, &socket, &address);
+    Listen(&server_fd, &address);
     
     while(1) {
         int new_socket = accept(server_fd, NULL, NULL);

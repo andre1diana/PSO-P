@@ -38,6 +38,7 @@ typedef struct {
     int socket;
     int is_busy;
     AgentCapabilities capabilities;
+    //lista de stringuri cu capabilitati -> labeluri //enum 
     pthread_mutex_t lock;
 } Agent;
 

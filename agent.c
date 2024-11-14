@@ -6,7 +6,6 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-
 #include "common.h"
 #include "protocol.h"
 
@@ -67,7 +66,6 @@ int ReceiveFile(int socket, const char* file_path) {
             return 0;
         }
 
-        // Write the received bytes to the file
         if (fwrite(buffer, 1, bytes_received, file) != bytes_received) {
             perror("File write failed");
             fclose(file);
@@ -187,7 +185,6 @@ void agent_main_loop(int socket) {
         switch(header.type) {
             case MSG_TASK_ASSIGN: {
                 TaskSubmission* task = (TaskSubmission*)payload_buffer;
-                // Procesează task-ul
                 char result_str[1024] = "Task completed successfully";
                 example_send_result(socket, header.sequence, result_str);
                 break;
