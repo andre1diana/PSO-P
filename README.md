@@ -35,7 +35,7 @@ AUTENTIFICARE:
 
 ## 3. Agent placa ESP32  (Daca se poate)
 
-## 4. Gestiunea task-uriloe
+## 4. Gestiunea task-urilor
 - Structuri de date stocate in server care vor contine informatii despre Clienti, Agenti si Task-uri.
 - In structura de date a Agentilor se vor afla flag-uri despre capabilitatile lor si disponibilitate.
 - In structura de date a Task-urilor se vor afla flag-uri despre cerintele lor.

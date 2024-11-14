@@ -7,11 +7,25 @@
 #include <fcntl.h>
 
 
-#include"task.h"
+#include "common.h"
+#include "protocol.h"
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
 #define SERVER_IP "192.168.100.201"
+
+char agent_id[32];
+AgentCapabilities capabilities;
+
+void execute_task(Task* task) {
+    // Implementare execuție task
+    char cmd[BUFFER_SIZE];
+    snprintf(cmd, BUFFER_SIZE, "%s %s", task->executable_path, task->arguments);
+    
+    FILE* fp = popen(cmd, "r");
+    // Citire rezultat și trimitere înapoi la server
+    pclose(fp);
+}
 
 int init_connection(){
     int sock = 0;
@@ -71,16 +85,6 @@ int ReceiveFile(int socket, const char* file_path) {
 
     fclose(file);
     return 0;
-}
-
-int ReceiveTask(int socket, TASK_DATA task_data)
-{
-
-}
-
-int SendResult(int socket, TASK_DATA result)
-{
-
 }
 
 void ExecuteTask(char* command[])
@@ -176,29 +180,67 @@ void ExecuteTask(char* command[])
     }
 }
 
-int main() {
-/*     int sock = init_connection();
-
-    char *message = "Hello, Leuuu";
-    char buffer[BUFFER_SIZE] = {0};
-
-    send(sock, message, strlen(message), 0);
-    printf("Message sent\n");
-
-    // Read the response from the server
-    int ok = ReceiveFile(sock, "file");
-    if (ok == 0)
-    {
-        printf("file received");
+void agent_main_loop(int socket) {
+    MessageHeader header;
+    char payload_buffer[MAX_PAYLOAD_SIZE];
+    
+    // Înregistrare agent
+    example_agent_registration(socket, "AGENT001");
+    
+    while(1) {
+        int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
+        if (result < 0) {
+            printf("Error receiving message: %d\n", result);
+            break;
+        }
+        
+        switch(header.type) {
+            case MSG_TASK_ASSIGN: {
+                TaskSubmission* task = (TaskSubmission*)payload_buffer;
+                // Procesează task-ul
+                char result_str[1024] = "Task completed successfully";
+                example_send_result(socket, header.sequence, result_str);
+                break;
+            }
+            // Handle other message types...
+        }
     }
-    //read(sock, buffer, BUFFER_SIZE);
-    //printf("Server: %s\n", buffer);
+}
 
-    close(sock); */
 
-    char *command[] = {"ls", "-l", NULL};
-
-    ExecuteTask(command);
-
+int main(int argc, char* argv[]) {
+if(argc != 2) {
+        printf("Usage: %s <agent_id>\n", argv[0]);
+        return 1;
+    }
+    
+    strcpy(agent_id, argv[1]);
+    
+    // Inițializare capabilități
+    capabilities.can_execute_binary = 1;
+    capabilities.has_gpu = 0;
+    capabilities.memory_mb = 1024;
+    
+    // Conectare la server și înregistrare
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in server_addr;
+    
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
+    
+    connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    
+    // Loop principal pentru primirea și executarea task-urilor
+    char buffer[BUFFER_SIZE];
+    while(1) {
+        int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
+        if(read_size <= 0) break;
+        
+        // Procesare task și execuție
+        Task* task = (Task*)buffer;
+        execute_task(task);
+    }
+    
     return 0;
 }

@@ -5,10 +5,52 @@
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
 
+#include "common.h"
+#include "protocol.h"
+
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
+// Structuri globale pentru server
+Agent agents[MAX_AGENTS];
+Task task_queue[MAX_TASKS];
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+int num_agents = 0;
+int task_count = 0;
+
 typedef struct sockaddr_in sockaddr_in;
+
+// Funcție pentru găsirea unui agent disponibil
+Agent* find_available_agent(Task* task) {
+    for(int i = 0; i < num_agents; i++) {
+        pthread_mutex_lock(&agents[i].lock);
+        if (!agents[i].is_busy && 
+            agents[i].capabilities.memory_mb >= task->min_memory &&
+            (!task->requires_gpu || agents[i].capabilities.has_gpu)) {
+            agents[i].is_busy = 1;
+            pthread_mutex_unlock(&agents[i].lock);
+            return &agents[i];
+        }
+        pthread_mutex_unlock(&agents[i].lock);
+    }
+    return NULL;
+}
+
+// Handler pentru conexiuni noi
+void* handle_connection(void* socket_desc) {
+    int sock = *(int*)socket_desc;
+    char buffer[BUFFER_SIZE];
+    
+    while(1) {
+        int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
+        if(read_size <= 0) break;
+        
+        // Procesare mesaj...
+        // Implementare pentru diferite tipuri de mesaje
+    }
+    
+    return NULL;
+}
 
 int InitSockets(int* server_fd, int* new_socket, sockaddr_in* address)
 {
@@ -109,35 +151,53 @@ int SendFile(int new_socket, const char* file_path) {
     return 0;
 }
 
-int main() {
-    int server_fd, new_socket;
-    sockaddr_in address;
-    int opt = 1;
-    int addrlen = sizeof(address);
-    char buffer[BUFFER_SIZE] = {0};
-    char *hello = "Hello Didiii\n";
-
-    InitSockets(&server_fd, &new_socket, &address);
-    Listen(&server_fd, &address);
-
-    while (1)
-{
-    // Accept a connection from the client
-
-    AcceptConnection(server_fd, &new_socket, address);
-
-    // Read the message from the client
-    ReceiveMessage(new_socket, buffer);
-
-    memset(buffer, 0, BUFFER_SIZE);
-
-    // Send a message to the client
-    SendMessage(new_socket, hello);
-
-    SendFile(new_socket, "ToSend.txt");
+void handle_client_message(int socket) {
+    MessageHeader header;
+    char payload_buffer[MAX_PAYLOAD_SIZE];
+    
+    int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
+    if (result < 0) {
+        return;
+    }
+    
+    switch(header.type) {
+        case MSG_AGENT_REGISTER: {
+            AgentRegistration* reg = (AgentRegistration*)payload_buffer;
+            // Procesează înregistrarea agentului
+            break;
+        }
+        case MSG_TASK_SUBMIT: {
+            TaskSubmission* task = (TaskSubmission*)payload_buffer;
+            // Procesează task-ul primit
+            break;
+        }
+        case MSG_TASK_RESULT: {
+            TaskResult* result = (TaskResult*)payload_buffer;
+            // Procesează rezultatul
+            break;
+        }
+    }
 }
 
-    close(new_socket);
-    close(server_fd);
+int main() {
+    int server_fd;
+    struct sockaddr_in address;
+    pthread_t thread_id;
+    
+    // Inițializare socket
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+    
+    bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+    listen(server_fd, 3);
+    
+    while(1) {
+        int new_socket = accept(server_fd, NULL, NULL);
+        pthread_create(&thread_id, NULL, handle_connection, (void*)&new_socket);
+        pthread_detach(thread_id);
+    }
+    
     return 0;
 }
