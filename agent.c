@@ -6,12 +6,25 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-
-#include"task.h"
+#include "common.h"
+#include "protocol.h"
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
-#define SERVER_IP "192.168.100.201"
+//#define SERVER_IP "192.168.100.201"
+//#define SERVER_IP "192.168.146.83"
+#define SERVER_IP "127.0.0.1"
+
+char agent_id[32];
+AgentCapabilities capabilities;
+
+void execute_task(Task* task) {
+    char cmd[BUFFER_SIZE];
+    snprintf(cmd, BUFFER_SIZE, "%s %s", task->executable_path, task->arguments);
+    
+    FILE* fp = popen(cmd, "r");
+    pclose(fp);
+}
 
 int init_connection(){
     int sock = 0;
@@ -55,7 +68,6 @@ int ReceiveFile(int socket, const char* file_path) {
             return 0;
         }
 
-        // Write the received bytes to the file
         if (fwrite(buffer, 1, bytes_received, file) != bytes_received) {
             perror("File write failed");
             fclose(file);
@@ -73,25 +85,14 @@ int ReceiveFile(int socket, const char* file_path) {
     return 0;
 }
 
-int ReceiveTask(int socket, TASK_DATA task_data)
-{
-
-}
-
-int SendResult(int socket, TASK_DATA result)
-{
-
-}
-
 void ExecuteTask(char* command[])
 {
     pid_t pid1, pid2;
     int status;
     int redirect_index = -1;
     int pipe_index = -1;
-    int pipefd[2]; // Descriptorii pentru pipe
+    int pipefd[2];
 
-    // Detectăm redirecționarea și pipe-urile
     for (int i = 0; command[i] != NULL; i++) {
         if (strcmp(command[i], ">") == 0) {
             redirect_index = i;
@@ -102,7 +103,6 @@ void ExecuteTask(char* command[])
         }
     }
 
-    // Creăm un pipe dacă e nevoie
     if (pipe_index != -1) {
         if (pipe(pipefd) == -1) {
             perror("pipe error");
@@ -112,15 +112,13 @@ void ExecuteTask(char* command[])
 
     pid1 = fork();
     if (pid1 == 0) {
-        // Proces copil pentru comanda din stânga pipe-ului
         if (pipe_index != -1) {
-            // Redirecționăm output-ul comenzii în pipe
             dup2(pipefd[1], STDOUT_FILENO);
-            close(pipefd[0]);  // Închidem capătul de citire al pipe-ului
-            close(pipefd[1]);  // Nu mai avem nevoie de capătul de scriere al pipe-ului
+            close(pipefd[0]);  
+            close(pipefd[1]);  
         }
 
-        // Dacă există redirecționare de output, tratăm asta
+        
         if (redirect_index != -1) {
             char *filename = command[redirect_index + 1];
             if (filename == NULL) {
@@ -134,13 +132,12 @@ void ExecuteTask(char* command[])
                 exit(EXIT_FAILURE);
             }
 
-            dup2(fd, STDOUT_FILENO);  // Redirecționăm stdout în fișier
+            dup2(fd, STDOUT_FILENO);  
             close(fd);
-            command[redirect_index] = NULL;  // Tăiem comanda la poziția de redirecționare
+            command[redirect_index] = NULL; 
         }
 
-        // Executăm prima comandă
-        command[pipe_index] = NULL;  // Tăiem comanda la poziția pipe-ului
+        command[pipe_index] = NULL;  
         if (execvp(command[0], command) == -1) {
             perror("execvp error");
             exit(EXIT_FAILURE);
@@ -152,12 +149,10 @@ void ExecuteTask(char* command[])
     if (pipe_index != -1) {
         pid2 = fork();
         if (pid2 == 0) {
-            // Proces copil pentru comanda din dreapta pipe-ului
-            dup2(pipefd[0], STDIN_FILENO);  // Redirecționăm input-ul din pipe
-            close(pipefd[1]);  // Închidem capătul de scriere al pipe-ului
-            close(pipefd[0]);  // Închidem capătul de citire al pipe-ului după dup2
+            dup2(pipefd[0], STDIN_FILENO);  
+            close(pipefd[1]);  
+            close(pipefd[0]);
 
-            // Executăm a doua comandă
             if (execvp(command[pipe_index + 1], &command[pipe_index + 1]) == -1) {
                 perror("execvp error");
                 exit(EXIT_FAILURE);
@@ -167,38 +162,104 @@ void ExecuteTask(char* command[])
         }
     }
 
-    // În procesul părinte, așteptăm ambele procese să se termine
     close(pipefd[0]);
     close(pipefd[1]);
     waitpid(pid1, &status, 0);
     if (pipe_index != -1) {
         waitpid(pid2, &status, 0);
     }
+
+    
 }
 
-int main() {
-/*     int sock = init_connection();
+// void agent_main_loop(int socket) {
+//     MessageHeader header;
+//     char payload_buffer[MAX_PAYLOAD_SIZE];
+    
+//     // inregistrare agent
+//     example_agent_registration(socket, "AGENT001");
+    
+//     while(1) {
+//         int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
+//         if (result < 0) {
+//             printf("Error receiving message: %d\n", result);
+//             break;
+//         }
+        
+//         switch(header.type) {
+//             case MSG_TASK_ASSIGN: {
+//                 TaskSubmission* task = (TaskSubmission*)payload_buffer;
+//                 char result_str[1024] = "Task completed successfully";
+//                 example_send_result(socket, header.sequence, result_str);
+//                 break;
+//             }
+//             // Handle other message types...
+//         }
+//     }
+// }
 
-    char *message = "Hello, Leuuu";
-    char buffer[BUFFER_SIZE] = {0};
+void ParseCommand(char *input, char *command[]) {
+    char *token;
+    int index = 0;
 
-    send(sock, message, strlen(message), 0);
-    printf("Message sent\n");
-
-    // Read the response from the server
-    int ok = ReceiveFile(sock, "file");
-    if (ok == 0)
-    {
-        printf("file received");
+    token = strtok(input, " ");
+    while (token != NULL) {
+        command[index] = token;
+        index++;
+        token = strtok(NULL, " ");
     }
-    //read(sock, buffer, BUFFER_SIZE);
-    //printf("Server: %s\n", buffer);
+    command[index] = NULL;  // NULL-terminate the array
+}
 
-    close(sock); */
+int main(int argc, char* argv[]) {
+    printf("Agent starting running...\n");
 
-    char *command[] = {"ls", "-l", NULL};
+    if(argc != 2) {
+        printf("Usage: %s <agent_id>\n", argv[0]);
+        return 1;
+    }
+    
+    strcpy(agent_id, argv[1]);
 
-    ExecuteTask(command);
+    printf("AGENT ID: %s\n", agent_id);
+    
+    capabilities.can_execute_binary = 1;
+    capabilities.has_gpu = 0;
+    capabilities.memory_mb = 1024;
+    
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in server_addr;
+    
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
+    
+    if(connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0){
+        printf("Successfull connection with server...\n");
+        send(sock, agent_id, strlen(agent_id), 0);
+    }
+    else{
+        printf("Connection error with server...\n");
+    }
 
+    
+    char buffer[BUFFER_SIZE];
+    while(1) {
+        int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
+        if(read_size <= 0) break;
+
+        buffer[read_size] = 0;
+        printf("Task from server: %s, (len = %d)\n", buffer, read_size);
+
+        char* command[255];
+
+        ParseCommand(buffer, command);
+
+        ExecuteTask(command);
+        
+        //Task* task = (Task*)buffer;
+        //execute_task(task);
+    }
+    
     return 0;
 }

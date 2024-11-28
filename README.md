@@ -5,7 +5,7 @@
 
 ## 1. Processing System:
 1. Server centralizat care primeste requesturi cu sarcini de executie (prin socket)
-2. Agent - se instaleaza pe o statie, se înregistrează în server, primește sarcini (prin socketsi).
+2. Agent - se instaleaza pe o statie, se înregistrează în server, primește sarcini (prin sockets).
 
 ## 2. Functionalitati:
   
@@ -24,7 +24,6 @@ AGENT:
 - Returneaza rezultat la server
 
 CLIENT:
-- Interfata grafica
 - Poate incarca un executabil 
 - Completeaza argumentele
 - Trimite catre server informatiile
@@ -33,9 +32,9 @@ CLIENT:
 AUTENTIFICARE:
 - Agentii se vor conecta automat la server pe baza unui ID. Un administrator se va ocupa de adaugarea agentilor si gestionarea ID-urilor.
 
-## 3. Agent placa ESP32  (Daca se poate)
+## 3. Agent placa ESP32 (optional)
 
-## 4. Gestiunea task-uriloe
+## 4. Gestiunea task-urilor
 - Structuri de date stocate in server care vor contine informatii despre Clienti, Agenti si Task-uri.
 - In structura de date a Agentilor se vor afla flag-uri despre capabilitatile lor si disponibilitate.
 - In structura de date a Task-urilor se vor afla flag-uri despre cerintele lor.
