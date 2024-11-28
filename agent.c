@@ -11,7 +11,9 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
-#define SERVER_IP "192.168.100.201"
+//#define SERVER_IP "192.168.100.201"
+//#define SERVER_IP "192.168.146.83"
+#define SERVER_IP "127.0.0.1"
 
 char agent_id[32];
 AgentCapabilities capabilities;
@@ -166,42 +168,60 @@ void ExecuteTask(char* command[])
     if (pipe_index != -1) {
         waitpid(pid2, &status, 0);
     }
+
+    
 }
 
-void agent_main_loop(int socket) {
-    MessageHeader header;
-    char payload_buffer[MAX_PAYLOAD_SIZE];
+// void agent_main_loop(int socket) {
+//     MessageHeader header;
+//     char payload_buffer[MAX_PAYLOAD_SIZE];
     
-    // inregistrare agent
-    example_agent_registration(socket, "AGENT001");
+//     // inregistrare agent
+//     example_agent_registration(socket, "AGENT001");
     
-    while(1) {
-        int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
-        if (result < 0) {
-            printf("Error receiving message: %d\n", result);
-            break;
-        }
+//     while(1) {
+//         int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
+//         if (result < 0) {
+//             printf("Error receiving message: %d\n", result);
+//             break;
+//         }
         
-        switch(header.type) {
-            case MSG_TASK_ASSIGN: {
-                TaskSubmission* task = (TaskSubmission*)payload_buffer;
-                char result_str[1024] = "Task completed successfully";
-                example_send_result(socket, header.sequence, result_str);
-                break;
-            }
-            // Handle other message types...
-        }
-    }
-}
+//         switch(header.type) {
+//             case MSG_TASK_ASSIGN: {
+//                 TaskSubmission* task = (TaskSubmission*)payload_buffer;
+//                 char result_str[1024] = "Task completed successfully";
+//                 example_send_result(socket, header.sequence, result_str);
+//                 break;
+//             }
+//             // Handle other message types...
+//         }
+//     }
+// }
 
+void ParseCommand(char *input, char *command[]) {
+    char *token;
+    int index = 0;
+
+    token = strtok(input, " ");
+    while (token != NULL) {
+        command[index] = token;
+        index++;
+        token = strtok(NULL, " ");
+    }
+    command[index] = NULL;  // NULL-terminate the array
+}
 
 int main(int argc, char* argv[]) {
-if(argc != 2) {
+    printf("Agent starting running...\n");
+
+    if(argc != 2) {
         printf("Usage: %s <agent_id>\n", argv[0]);
         return 1;
     }
     
     strcpy(agent_id, argv[1]);
+
+    printf("AGENT ID: %s\n", agent_id);
     
     capabilities.can_execute_binary = 1;
     capabilities.has_gpu = 0;
@@ -212,17 +232,33 @@ if(argc != 2) {
     
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
-    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
+    inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
     
-    connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    if(connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0){
+        printf("Successfull connection with server...\n");
+        send(sock, agent_id, strlen(agent_id), 0);
+    }
+    else{
+        printf("Connection error with server...\n");
+    }
+
     
     char buffer[BUFFER_SIZE];
     while(1) {
         int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
         if(read_size <= 0) break;
+
+        buffer[read_size] = 0;
+        printf("Task from server: %s, (len = %d)\n", buffer, read_size);
+
+        char* command[255];
+
+        ParseCommand(buffer, command);
+
+        ExecuteTask(command);
         
-        Task* task = (Task*)buffer;
-        execute_task(task);
+        //Task* task = (Task*)buffer;
+        //execute_task(task);
     }
     
     return 0;

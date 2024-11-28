@@ -54,11 +54,6 @@ typedef struct {
     // Altele
 } Task;
 
-// Structura pentru rezultat
-typedef struct {
-    int task_id;
-    int status;
-    char result[BUFFER_SIZE];
-} TaskResult;
+
 
 #endif

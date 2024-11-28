@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
 
@@ -12,6 +15,7 @@
 #define BUFFER_SIZE 1024
 
 Agent agents[MAX_AGENTS];
+int agents_iterator = 0;
 Task task_queue[MAX_TASKS];
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 int num_agents = 0;
@@ -40,9 +44,9 @@ void* handle_connection(void* socket_desc) {
     
     while(1) {
         int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
-        if(read_size <= 0) break;
-        
-        // Procesare mesaj
+        if(read_size <= 0) {
+            break;
+        }
     }
     
     return NULL;
@@ -91,13 +95,30 @@ int Listen(int* server_fd, sockaddr_in* address)
     return 0;
 }
 
-int AcceptConnection(int server_fd, int *new_socket, sockaddr_in address)
+int AcceptConnection(int server_fd, Agent* new_agent)
 {
-    int addrlen = sizeof(address);
-
-    if ((*new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+    printf("DEBUG1\n");
+    int new_socket;
+    char buffer[MAX_PAYLOAD_SIZE];
+    if ((new_socket = accept(server_fd, NULL, NULL)) < 0) {
         printf("Accept error");
         exit(EXIT_FAILURE);
+    }
+    else{
+        printf("DEBUG agent accepted\n");
+        while(1){
+            int recv_size = recv(new_socket, buffer, MAX_PAYLOAD_SIZE, 0);
+            if(recv_size > 0)
+            {
+                printf("Agent connection accepted (%d, %s)...\n",new_socket, buffer);
+                agents[agents_iterator].socket = new_socket;
+                strcpy(agents[agents_iterator].id,buffer);
+                agents[agents_iterator].is_busy = 0;
+                agents_iterator++;
+                printf("DEBUG1\n");
+                break;
+            }
+        }
     }
 
     return 0;
@@ -126,11 +147,9 @@ int SendFile(int new_socket, const char* file_path) {
         return -1;
     }
 
-    // Buffer to store file data to be sent
     char buffer[1024];
     int bytes_read;
 
-    // Send the file in chunks
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
         if (send(new_socket, buffer, bytes_read, 0) == -1) {
             perror("Send failed");
@@ -175,6 +194,55 @@ void handle_client_message(int socket) {
     }
 }
 
+void MonitorAgents() {
+    for (int i = 0; i < agents_iterator; i++) {
+        int agent_socket = agents[i].socket;
+        const char* agent_id = agents[i].id;
+        char buffer[1024];
+
+        int recv_size = recv(agent_socket, buffer, sizeof(buffer), MSG_DONTWAIT);
+
+        if (recv_size == 0) {
+            printf("Agent [%s] disconnected gracefully.\n", agent_id);
+            close(agent_socket);
+
+
+            for (int j = i; j < agents_iterator - 1; j++) {
+                agents[j] = agents[j + 1];
+            }
+            agents_iterator--; 
+            i--;     
+        } else if (recv_size < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            } else if (errno == ECONNRESET) {
+                printf("Agent [%s] disconnected unexpectedly (connection reset).\n", agent_id);
+                close(agent_socket);
+
+                for (int j = i; j < agents_iterator - 1; j++) {
+                    agents[j] = agents[j + 1];
+                }
+                agents_iterator--;
+                i--;
+            } else {
+                printf("Error receiving from agent [%s]: %s\n", agent_id, strerror(errno));
+                close(agent_socket);
+
+                for (int j = i; j < agents_iterator - 1; j++) {
+                    agents[j] = agents[j + 1];
+                }
+                agents_iterator--;
+                i--;
+            }
+        } else {
+            buffer[recv_size] = '\0';
+            printf("Received from agent [%s]: %s\n", agent_id, buffer);
+        }
+    }
+}
+
+
+
 int main() {
     int server_fd;
     struct sockaddr_in address;
@@ -183,11 +251,22 @@ int main() {
     // Initializare socket
     InitSockets(&server_fd, &socket, &address);
     Listen(&server_fd, &address);
+
+    int test_command_bool = 1;
     
     while(1) {
-        int new_socket = accept(server_fd, NULL, NULL);
-        pthread_create(&thread_id, NULL, handle_connection, (void*)&new_socket);
-        pthread_detach(thread_id);
+        AcceptConnection(server_fd, NULL);
+        //pthread_create(&thread_id, NULL, handle_connection, (void*)&new_socket);
+        //pthread_detach(thread_id);
+        MonitorAgents();
+
+        if(test_command_bool && (agents_iterator != 0))
+        {
+            test_command_bool = 0;
+            char command_buffer[] = "ls"; 
+            send(agents[0].socket, command_buffer, strlen(command_buffer), 0);
+            printf("Command %s sent to (%d %s)...\n", command_buffer, agents[0].socket, agents[0].id);
+        }
     }
     
     return 0;
