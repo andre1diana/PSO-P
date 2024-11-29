@@ -263,7 +263,7 @@ int main() {
         if(test_command_bool && (agents_iterator != 0))
         {
             test_command_bool = 0;
-            char command_buffer[] = "ls"; 
+            char command_buffer[] = "ls -l"; 
             send(agents[0].socket, command_buffer, strlen(command_buffer), 0);
             printf("Command %s sent to (%d %s)...\n", command_buffer, agents[0].socket, agents[0].id);
         }

@@ -12,8 +12,8 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 //#define SERVER_IP "192.168.100.201"
-//#define SERVER_IP "192.168.146.83"
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "192.168.128.83"
+//#define SERVER_IP "127.0.0.1"
 
 char agent_id[32];
 AgentCapabilities capabilities;
@@ -243,10 +243,11 @@ int main(int argc, char* argv[]) {
     }
 
     
-    char buffer[BUFFER_SIZE];
     while(1) {
+        char buffer[BUFFER_SIZE];
         int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
         if(read_size <= 0) break;
+
 
         buffer[read_size] = 0;
         printf("Task from server: %s, (len = %d)\n", buffer, read_size);
