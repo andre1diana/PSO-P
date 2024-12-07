@@ -178,17 +178,17 @@ void handle_client_message(int socket) {
     switch(header.type) {
         case MSG_AGENT_REGISTER: {
             AgentRegistration* reg = (AgentRegistration*)payload_buffer;
-            // Procesează înregistrarea agentului
+            // Proceseaza inregistrarea agentului
             break;
         }
         case MSG_TASK_SUBMIT: {
             TaskSubmission* task = (TaskSubmission*)payload_buffer;
-            // Procesează task-ul primit
+            // Proceseaza task-ul primit
             break;
         }
         case MSG_TASK_RESULT: {
             TaskResult* result = (TaskResult*)payload_buffer;
-            // Procesează rezultatul
+            // Proceseaza rezultatul
             break;
         }
     }
@@ -263,7 +263,7 @@ int main() {
         if(test_command_bool && (agents_iterator != 0))
         {
             test_command_bool = 0;
-            char command_buffer[] = "ls"; 
+            char command_buffer[] = "ls -l"; 
             send(agents[0].socket, command_buffer, strlen(command_buffer), 0);
             printf("Command %s sent to (%d %s)...\n", command_buffer, agents[0].socket, agents[0].id);
         }
