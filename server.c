@@ -81,9 +81,8 @@ int Listen(int* server_fd, sockaddr_in* address)
     return 0;
 }
 
-int AcceptConnection(int server_fd, Agent* new_agent)
+int AcceptConnectionAgent(int server_fd, Agent* new_agent)
 {
-    printf("DEBUG1\n");
     int new_socket;
     char buffer[MAX_PAYLOAD_SIZE];
     if ((new_socket = accept(server_fd, NULL, NULL)) < 0) {
@@ -91,172 +90,35 @@ int AcceptConnection(int server_fd, Agent* new_agent)
         exit(EXIT_FAILURE);
     }
     else{
+        MessageHeader header;
         printf("DEBUG agent accepted\n");
         while(1){
-            int recv_size = recv(new_socket, buffer, MAX_PAYLOAD_SIZE, 0);
-            if(recv_size > 0)
+            int recv_size = receive_message(new_socket, &header, &(agents[agents_iterator]), MAX_PAYLOAD_SIZE);
+            if(recv_size < 0)
             {
-                printf("Agent connection accepted (%d, %s)...\n",new_socket, buffer);
-                agents[agents_iterator].socket = new_socket;
-                strcpy(agents[agents_iterator].id,buffer);
-                agents[agents_iterator].is_busy = 0;
-                agents_iterator++;
-                printf("DEBUG1\n");
-                break;
+                printf("Connection error. \n");
             }
+            agents_iterator++;
+            printf("Agent connection accepted (%d, %s)...\n",new_socket, buffer);
         }
     }
 
     return 0;
 }
 
-void handle_received_message(int socket) {
-    MessageHeader header;
-    char payload_buffer[MAX_PAYLOAD_SIZE];
-    
-    int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
-    if (result < 0) {
-        return;
-    }
-    
-    switch(header.type) {
-        case MSG_AGENT_REGISTER: {
-            AgentRegistration* reg = (AgentRegistration*)payload_buffer;
-            // TODO Proceseaza inregistrarea agentului
-            break;
-        }
-        case MSG_TASK_SUBMIT: {
-            TaskSubmission* task = (TaskSubmission*)payload_buffer;
-            // TODO Proceseaza task-ul primit
-            break;
-        }
-        case MSG_TASK_RESULT: {
-            TaskResult* result = (TaskResult*)payload_buffer;
-            // TODO Proceseaza rezultatul
-            break;
-        }
-    }
+int has_capability(Agent *agent, int capability) {
+    return (agent->flags & capability) != 0;
 }
 
-Agent* find_available_agent(Task* task) {
-    for(int i = 0; i < num_agents; i++) {
-        pthread_mutex_lock(&agents[i].lock);
-        if (!agents[i].is_busy && 
-            agents[i].capabilities.memory_mb >= task->min_memory &&
-            (!task->requires_gpu || agents[i].capabilities.has_gpu)) {
-            agents[i].is_busy = 1;
-            pthread_mutex_unlock(&agents[i].lock);
-            return &agents[i];
-        }
-        pthread_mutex_unlock(&agents[i].lock);
-    }
-    return NULL;
-}
-
-void MonitorAgents() {
-    for (int i = 0; i < agents_iterator; i++) {
-        int agent_socket = agents[i].socket;
-        const char* agent_id = agents[i].id;
-        char buffer[1024];
-
-        int recv_size = recv(agent_socket, buffer, sizeof(buffer), MSG_DONTWAIT);
-
-        if (recv_size == 0) {
-            printf("Agent [%s] disconnected gracefully.\n", agent_id);
-            close(agent_socket);
-
-
-            for (int j = i; j < agents_iterator - 1; j++) {
-                agents[j] = agents[j + 1];
-            }
-            agents_iterator--; 
-            i--;     
-        } else if (recv_size < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            } else if (errno == ECONNRESET) {
-                printf("Agent [%s] disconnected unexpectedly (connection reset).\n", agent_id);
-                close(agent_socket);
-
-                for (int j = i; j < agents_iterator - 1; j++) {
-                    agents[j] = agents[j + 1];
-                }
-                agents_iterator--;
-                i--;
-            } else {
-                printf("Error receiving from agent [%s]: %s\n", agent_id, strerror(errno));
-                close(agent_socket);
-
-                for (int j = i; j < agents_iterator - 1; j++) {
-                    agents[j] = agents[j + 1];
-                }
-                agents_iterator--;
-                i--;
-            }
-        } else {
-            buffer[recv_size] = '\0';
-            printf("Received from agent [%s]: %s\n", agent_id, buffer);
-        }
-    }
-}
 
 int main() {
     int server_fd;
     struct sockaddr_in address;
-    pthread_t agent_monitor_thread;
     
     // initialize server
     InitSockets(&server_fd, NULL, &address);
     Listen(&server_fd, &address);
 
-    // create thread for agents monitorisation
-    pthread_create(&agent_monitor_thread, NULL, (void*)MonitorAgents, NULL);
-    pthread_detach(agent_monitor_thread);
-
-    printf("Server ready. Waiting for connections...\n");
-
-    while (1) {
-        // accept new connections
-        int new_socket = accept(server_fd, NULL, NULL);
-        if (new_socket < 0) {
-            printf("Error accepting connection: %s\n", strerror(errno));
-            continue;
-        }
-
-        char buffer[BUFFER_SIZE] = {0};
-        int bytes_received = recv(new_socket, buffer, BUFFER_SIZE, 0);
-
-        if (bytes_received > 0) {
-            buffer[bytes_received] = '\0';
-            printf("New connection received: %s\n", buffer);
-
-            // type of connection agent/client
-            if (strcmp(buffer, "AGENT") == 0) {
-                // new agent
-                printf("Registering new agent...\n");
-                if (agents_iterator < MAX_AGENTS) {
-                    pthread_mutex_lock(&queue_mutex);
-                    agents[agents_iterator].socket = new_socket;
-                    strcpy(agents[agents_iterator].id, "AgentX");
-                    agents[agents_iterator].is_busy = 0;
-                    pthread_mutex_init(&agents[agents_iterator].lock, NULL);
-                    agents_iterator++;
-                    pthread_mutex_unlock(&queue_mutex);
-                    printf("Agent registered successfully.\n");
-                } else {
-                    printf("Agent limit reached. Connection refused.\n");
-                    close(new_socket);
-                }
-            } else if (strcmp(buffer, "CLIENT") == 0) {
-                // clients connections
-                printf("Handling client connection...\n");
-                handle_connection(&new_socket);
-            } else {
-                printf("Unknown connection type. Closing socket.\n");
-                close(new_socket);
-            }
-        }
-    }
 
     close(server_fd);
     return 0;

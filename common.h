@@ -32,13 +32,23 @@ typedef struct {
     // Altele
 } AgentCapabilities;
 
+enum AgentCapabilitiesFlags {
+    ML_MODEL_TRAINING   = 1 << 0, // 0001
+    VIDEO_ENCODING      = 1 << 1, // 0010
+    DATA_ANALYSIS       = 1 << 2, // 0100
+    COMPRESSION         = 1 << 3, // 1000
+    ENCRYPTION          = 1 << 4, // 0001 0000
+    GPU_ACCELERATION    = 1 << 5, // 0010 0000
+    REALTIME_PROCESSING = 1 << 6  // 0100 0000
+};
+
 // Structura pentru agent
 typedef struct {
     char id[32];
     int socket;
     int is_busy;
     AgentCapabilities capabilities;
-    //lista de stringuri cu capabilitati -> labeluri //enum 
+    int flags;
     pthread_mutex_t lock;
 } Agent;
 

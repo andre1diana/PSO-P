@@ -17,6 +17,7 @@
 
 char agent_id[32];
 AgentCapabilities capabilities;
+int flags;
 
 void execute_task(Task* task) {
     char cmd[BUFFER_SIZE];
@@ -214,12 +215,13 @@ void ParseCommand(char *input, char *command[]) {
 int main(int argc, char* argv[]) {
     printf("Agent starting running...\n");
 
-    if(argc != 2) {
-        printf("Usage: %s <agent_id>\n", argv[0]);
+    if(argc != 3) {
+        printf("Usage: %s <agent_id> <agent_file>\n", argv[0]);
         return 1;
     }
     
     strcpy(agent_id, argv[1]);
+    
 
     printf("AGENT ID: %s\n", agent_id);
     
