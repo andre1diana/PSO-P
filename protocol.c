@@ -1,5 +1,5 @@
 #include "protocol.h"
-#include <stdio.h>
+#include <sys/socket.h>
 
 uint32_t calculate_checksum(const void* data, size_t size) {
     const uint8_t* bytes = (const uint8_t*)data;

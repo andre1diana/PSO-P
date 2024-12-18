@@ -23,20 +23,6 @@ int task_count = 0;
 
 typedef struct sockaddr_in sockaddr_in;
 
-Agent* find_available_agent(Task* task) {
-    for(int i = 0; i < num_agents; i++) {
-        pthread_mutex_lock(&agents[i].lock);
-        if (!agents[i].is_busy && 
-            agents[i].capabilities.memory_mb >= task->min_memory &&
-            (!task->requires_gpu || agents[i].capabilities.has_gpu)) {
-            agents[i].is_busy = 1;
-            pthread_mutex_unlock(&agents[i].lock);
-            return &agents[i];
-        }
-        pthread_mutex_unlock(&agents[i].lock);
-    }
-    return NULL;
-}
 
 void* handle_connection(void* socket_desc) {
     int sock = *(int*)socket_desc;
@@ -124,49 +110,7 @@ int AcceptConnection(int server_fd, Agent* new_agent)
     return 0;
 }
 
-int SendMessage(int new_socket, char* message)
-{
-    send(new_socket, message, strlen(message), 0);
-    printf("Hello message sent\n");
-
-    return 0;
-}
-
-int ReceiveMessage(int new_socket, char* buffer)
-{
-    read(new_socket, buffer, BUFFER_SIZE);
-    printf("Client: %s\n", buffer);
-
-    return 0;
-}
-
-int SendFile(int new_socket, const char* file_path) {
-    FILE *file = fopen(file_path, "rb");
-    if (file == NULL) {
-        perror("File open failed");
-        return -1;
-    }
-
-    char buffer[1024];
-    int bytes_read;
-
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        if (send(new_socket, buffer, bytes_read, 0) == -1) {
-            perror("Send failed");
-            fclose(file);
-            return -1;
-        }
-    }
-
-    char* ED = "ED";
-    SendMessage(new_socket, ED);
-
-    printf("File sent\n");
-    fclose(file);
-    return 0;
-}
-
-void handle_client_message(int socket) {
+void handle_received_message(int socket) {
     MessageHeader header;
     char payload_buffer[MAX_PAYLOAD_SIZE];
     
@@ -178,20 +122,35 @@ void handle_client_message(int socket) {
     switch(header.type) {
         case MSG_AGENT_REGISTER: {
             AgentRegistration* reg = (AgentRegistration*)payload_buffer;
-            // Proceseaza inregistrarea agentului
+            // TODO Proceseaza inregistrarea agentului
             break;
         }
         case MSG_TASK_SUBMIT: {
             TaskSubmission* task = (TaskSubmission*)payload_buffer;
-            // Proceseaza task-ul primit
+            // TODO Proceseaza task-ul primit
             break;
         }
         case MSG_TASK_RESULT: {
             TaskResult* result = (TaskResult*)payload_buffer;
-            // Proceseaza rezultatul
+            // TODO Proceseaza rezultatul
             break;
         }
     }
+}
+
+Agent* find_available_agent(Task* task) {
+    for(int i = 0; i < num_agents; i++) {
+        pthread_mutex_lock(&agents[i].lock);
+        if (!agents[i].is_busy && 
+            agents[i].capabilities.memory_mb >= task->min_memory &&
+            (!task->requires_gpu || agents[i].capabilities.has_gpu)) {
+            agents[i].is_busy = 1;
+            pthread_mutex_unlock(&agents[i].lock);
+            return &agents[i];
+        }
+        pthread_mutex_unlock(&agents[i].lock);
+    }
+    return NULL;
 }
 
 void MonitorAgents() {
@@ -241,33 +200,64 @@ void MonitorAgents() {
     }
 }
 
-
-
 int main() {
     int server_fd;
     struct sockaddr_in address;
-    pthread_t thread_id;
+    pthread_t agent_monitor_thread;
     
-    // Initializare socket
-    InitSockets(&server_fd, &socket, &address);
+    // initialize server
+    InitSockets(&server_fd, NULL, &address);
     Listen(&server_fd, &address);
 
-    int test_command_bool = 1;
-    
-    while(1) {
-        AcceptConnection(server_fd, NULL);
-        //pthread_create(&thread_id, NULL, handle_connection, (void*)&new_socket);
-        //pthread_detach(thread_id);
-        MonitorAgents();
+    // create thread for agents monitorisation
+    pthread_create(&agent_monitor_thread, NULL, (void*)MonitorAgents, NULL);
+    pthread_detach(agent_monitor_thread);
 
-        if(test_command_bool && (agents_iterator != 0))
-        {
-            test_command_bool = 0;
-            char command_buffer[] = "ls -l"; 
-            send(agents[0].socket, command_buffer, strlen(command_buffer), 0);
-            printf("Command %s sent to (%d %s)...\n", command_buffer, agents[0].socket, agents[0].id);
+    printf("Server ready. Waiting for connections...\n");
+
+    while (1) {
+        // accept new connections
+        int new_socket = accept(server_fd, NULL, NULL);
+        if (new_socket < 0) {
+            printf("Error accepting connection: %s\n", strerror(errno));
+            continue;
+        }
+
+        char buffer[BUFFER_SIZE] = {0};
+        int bytes_received = recv(new_socket, buffer, BUFFER_SIZE, 0);
+
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+            printf("New connection received: %s\n", buffer);
+
+            // type of connection agent/client
+            if (strcmp(buffer, "AGENT") == 0) {
+                // new agent
+                printf("Registering new agent...\n");
+                if (agents_iterator < MAX_AGENTS) {
+                    pthread_mutex_lock(&queue_mutex);
+                    agents[agents_iterator].socket = new_socket;
+                    strcpy(agents[agents_iterator].id, "AgentX");
+                    agents[agents_iterator].is_busy = 0;
+                    pthread_mutex_init(&agents[agents_iterator].lock, NULL);
+                    agents_iterator++;
+                    pthread_mutex_unlock(&queue_mutex);
+                    printf("Agent registered successfully.\n");
+                } else {
+                    printf("Agent limit reached. Connection refused.\n");
+                    close(new_socket);
+                }
+            } else if (strcmp(buffer, "CLIENT") == 0) {
+                // clients connections
+                printf("Handling client connection...\n");
+                handle_connection(&new_socket);
+            } else {
+                printf("Unknown connection type. Closing socket.\n");
+                close(new_socket);
+            }
         }
     }
-    
+
+    close(server_fd);
     return 0;
 }

@@ -45,7 +45,5 @@ int main()
     //read(sock, buffer, BUFFER_SIZE);
     //printf("Server: %s\n", buffer);
 
-    
-
     close(sock);
 }

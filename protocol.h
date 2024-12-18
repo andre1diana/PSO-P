@@ -2,6 +2,7 @@
 #define PROTOCOL_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 // Dimensiuni maxime pentru diferite campuri
 #define MAX_PAYLOAD_SIZE 4096
