@@ -168,7 +168,9 @@ void ExecuteTask(char* command[])
     waitpid(pid1, &status, 0);
     if (pipe_index != -1) {
         waitpid(pid2, &status, 0);
-    }    
+    }
+
+    
 }
 
 void ParseCommand(char *input, char *command[]) {
