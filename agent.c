@@ -168,36 +168,8 @@ void ExecuteTask(char* command[])
     waitpid(pid1, &status, 0);
     if (pipe_index != -1) {
         waitpid(pid2, &status, 0);
-    }
-
-    
+    }    
 }
-
-// void agent_main_loop(int socket) {
-//     MessageHeader header;
-//     char payload_buffer[MAX_PAYLOAD_SIZE];
-    
-//     // inregistrare agent
-//     example_agent_registration(socket, "AGENT001");
-    
-//     while(1) {
-//         int result = receive_message(socket, &header, payload_buffer, MAX_PAYLOAD_SIZE);
-//         if (result < 0) {
-//             printf("Error receiving message: %d\n", result);
-//             break;
-//         }
-        
-//         switch(header.type) {
-//             case MSG_TASK_ASSIGN: {
-//                 TaskSubmission* task = (TaskSubmission*)payload_buffer;
-//                 char result_str[1024] = "Task completed successfully";
-//                 example_send_result(socket, header.sequence, result_str);
-//                 break;
-//             }
-//             // Handle other message types...
-//         }
-//     }
-// }
 
 void ParseCommand(char *input, char *command[]) {
     char *token;
@@ -212,22 +184,49 @@ void ParseCommand(char *input, char *command[]) {
     command[index] = NULL;  // NULL-terminate the array
 }
 
+void initializeAgent(const char* agentFile)
+{
+    FILE* file = fopen(agentFile, "r");
+    if (file == NULL) {
+        perror("Failed to open agent file");
+        exit(EXIT_FAILURE);
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        // Ignor liniile care sunt comentarii sau goale
+        if (line[0] == '#' || strlen(line) <= 1) {
+            continue;
+        }
+
+        // Read values from file
+        sscanf(line, "%31[^,], %d, %d, %d, %d",
+               agent_id,
+               &capabilities.can_execute_binary,
+               &capabilities.has_gpu,
+               &capabilities.memory_mb,
+               &flags);
+
+        // Afisam datele pentru verificare
+        printf("Agent ID: %s\n", agent_id);
+        printf("  Can Execute Binary: %d\n", capabilities.can_execute_binary);
+        printf("  Has GPU: %d\n", capabilities.has_gpu);
+        printf("  Memory (MB): %d\n", capabilities.memory_mb);
+        printf("  Flags: %d\n", flags);
+    }
+
+    fclose(file);
+}
+
 int main(int argc, char* argv[]) {
     printf("Agent starting running...\n");
 
-    if(argc != 3) {
-        printf("Usage: %s <agent_id> <agent_file>\n", argv[0]);
+    if(argc != 2) {
+        printf("Usage: %s <agent_file>\n", argv[0]);
         return 1;
-    }
-    
-    strcpy(agent_id, argv[1]);
-    
+    }    
 
-    printf("AGENT ID: %s\n", agent_id);
-    
-    capabilities.can_execute_binary = 1;
-    capabilities.has_gpu = 0;
-    capabilities.memory_mb = 1024;
+    initializeAgent(argv[1]);
     
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in server_addr;
@@ -238,7 +237,15 @@ int main(int argc, char* argv[]) {
     
     if(connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0){
         printf("Successfull connection with server...\n");
-        send(sock, agent_id, strlen(agent_id), 0);
+        Agent *agent = malloc(sizeof(Agent));
+        strcpy(agent->id, agent_id);
+        agent->capabilities = capabilities;
+        agent->flags = flags;
+        agent->is_busy = 0;
+        if (send_message(sock, MSG_AGENT_REGISTER, agent, sizeof(agent)) != 0)
+        {
+            printf("Could not send agent info");
+        }
     }
     else{
         printf("Connection error with server...\n");

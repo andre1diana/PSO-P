@@ -1,0 +1,5 @@
+# Agent Configuration File
+# Format:
+# agent_id, can_execute_binary, has_gpu, memory_mb, flags
+#
+AGENT002, 1, 1, 8192, 35
