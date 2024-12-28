@@ -119,6 +119,11 @@ int main() {
     InitSockets(&server_fd, NULL, &address);
     Listen(&server_fd, &address);
 
+    while(1)
+    {
+        
+    }
+
 
     close(server_fd);
     return 0;
