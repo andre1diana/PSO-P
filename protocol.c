@@ -30,9 +30,9 @@ int send_message(int socket, MessageType type, const void* payload, size_t paylo
         return -1;
     }
     
-    // Trimite payload dacă exista
+    // Trimite payload daca exista
     if (payload_size > 0 && payload != NULL) {
-        if (send(socket, payload, payload_size, MSG_NOSIGNAL) != payload_size) {
+        if (send(socket, payload, payload_size, MSG_NOSIGNAL) != (payload_size)) {
             return -1;
         }
     }

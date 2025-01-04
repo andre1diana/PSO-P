@@ -16,6 +16,8 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
+#define SERVER_IP "127.0.0.1"
+
 // Tipuri de mesaje
 enum MessageType {
     REGISTER_AGENT,
@@ -33,8 +35,8 @@ typedef struct {
 } AgentCapabilities;
 
 enum AgentCapabilitiesFlags {
-    ML_MODEL_TRAINING   = 1 << 0, // 0001
-    VIDEO_ENCODING      = 1 << 1, // 0010
+    OS_LINUX            = 1 << 0, // 0001
+    OS_WINDOWS          = 1 << 1, // 0010
     DATA_ANALYSIS       = 1 << 2, // 0100
     COMPRESSION         = 1 << 3, // 1000
     ENCRYPTION          = 1 << 4, // 0001 0000
@@ -59,11 +61,15 @@ typedef struct {
     char arguments[256];
     int requires_gpu;
     int min_memory;
+    int flags;
     int client_socket;
     int is_async;
-    // Altele
 } Task;
 
 
+typedef struct {
+    char client_id[32];
+    int socket;
+} Client;
 
 #endif

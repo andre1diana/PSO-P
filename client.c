@@ -11,10 +11,10 @@
 #include "common.h"
 #include "protocol.h"
 
-#define SERVER_IP "10.0.2.15"
-#define MENU_OPTIONS 6
+#define MENU_OPTIONS 7
 
 void connect_to_server();
+void automatic_task();
 void type_task();
 void select_task();
 void send_task();
@@ -23,9 +23,19 @@ void cleanup_and_exit();
 void print_menu(int selected);
 bool is_executable(const char *filepath);
 
-char task[BUFFER_SIZE];
+char task_buff[BUFFER_SIZE];
+int client_socket = -1;
+char clientID[32];
 
-int main() {
+int main(int argc, const char* argv[]) {
+
+    if(argc != 2)
+    {
+        printf("Usage: %s <client_id>\n", argv[0]);
+        return 0;
+    }
+    strcpy(clientID, argv[1]);
+
     int selected = 0;
     char key;
 
@@ -54,21 +64,34 @@ int main() {
                     connect_to_server();
                     break;
                 case 1:
-                    type_task();
+                    automatic_task();
                     break;
                 case 2:
-                    select_task();
+                    type_task();
                     break;
                 case 3:
-                    send_task();
+                    select_task();
                     break;
                 case 4:
-                    task_status();
+                    send_task();
                     break;
                 case 5:
+                    task_status();
+                    break;
+                case 6:
                     cleanup_and_exit();
                     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
                     exit(0);
+            }
+        }
+        MessageHeader header;
+        void* payload;
+        if (receive_message(client_socket, &header, payload, MAX_PAYLOAD_SIZE) == 0)
+        {
+            if(header.type == MSG_SERVER_CLOSE)
+            {
+                printf("Server deconected.\n");
+                getchar();
             }
         }
     }
@@ -77,8 +100,58 @@ int main() {
 }
 
 void connect_to_server() {
-    printf("[Not implemented] Connect to server.\n");
-    getchar();
+    struct sockaddr_in server_address;
+
+    // Create a socket
+    client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_socket < 0) {
+        perror("Error creating socket");
+        return;
+    }
+
+    // Configure server address
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(PORT);
+    if (inet_pton(AF_INET, SERVER_IP, &server_address.sin_addr) <= 0) {
+        perror("Invalid server address");
+        close(client_socket);
+        return;
+    }
+
+    // Connect to the server
+    if (connect(client_socket, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+        perror("Connection to server failed");
+        close(client_socket);
+        return;
+    }
+    else
+    {
+        printf("Connected to server at %s:%d\n", SERVER_IP, PORT);
+
+        Client *client = malloc(sizeof(Client));
+        strcpy(client->client_id, clientID);
+        
+        //send header first
+        if ( send_message(client_socket, MSG_CLIENT_REGISTER, NULL, 0) != 0)
+        {
+            printf("Could not send message.\n");
+            return -1;
+        }
+
+        if (send_message(client_socket, MSG_CLIENT_REGISTER, client, sizeof(Client)) != 0)
+        {
+            printf("Could not send client info.\n");
+            return -1;
+        }
+        free(client);
+    }
+
+    getchar(); // Wait for user input to proceed
+}
+
+void automatic_task()
+{
+
 }
 
 void type_task() {
@@ -88,14 +161,44 @@ void type_task() {
     newt = oldt;
     newt.c_lflag |= ECHO;
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    
+    // Buffer pentru citirea datelor
+    char task_buff[BUFFER_SIZE];
+    Task* task = malloc(sizeof(Task));
+    if (task == NULL) {
+        perror("Memory allocation failed");
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        return;
+    }
 
+    // Solicită introducerea detaliilor pentru task
     printf("Enter the task command: ");
-    fgets(task, BUFFER_SIZE, stdin);
-    task[strcspn(task, "\n")] = 0;
-    printf("Task recorded: %s\n", task);
+    fgets(task_buff, BUFFER_SIZE, stdin);
+    task_buff[strcspn(task_buff, "\n")] = 0; // Elimină newline-ul final
+    printf("Task recorded: %s\n", task_buff);
+
+    printf("Does the task require GPU? (1 for Yes, 0 for No): ");
+    scanf("%d", &task->requires_gpu);
+
+    printf("Enter the minimum memory required (MB): ");
+    scanf("%d", &task->min_memory);
+
+    printf("Enter any flags (integer value): ");
+    scanf("%d", &task->flags);
+
+    printf("Should the task run asynchronously? (1 for Yes, 0 for No): ");
+    scanf("%d", &task->is_async);
+
+    if (send_message(client_socket, MSG_TASK_ASSIGN, task, sizeof(Task)) < 0) {
+        perror("Failed to send task to client");
+    } else {
+        printf("Task sent to client successfully.\n");
+    }
+
+    free(task);
 
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-    getchar();
+    getchar(); // Consumă newline-ul rămas
 }
 
 void select_task() {
@@ -150,11 +253,16 @@ void task_status() {
 
 void cleanup_and_exit() {
     printf("Cleaning up resources and exiting.\n");
+    if (client_socket >= 0) {
+        close(client_socket);
+        printf("Socket closed.\n");
+    }
 }
 
 void print_menu(int selected) {
     const char *options[MENU_OPTIONS] = {
         "Connect to server",
+        "Automatic task",
         "Type task",
         "Select task",
         "Send task",

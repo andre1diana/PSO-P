@@ -9,23 +9,10 @@
 #include "common.h"
 #include "protocol.h"
 
-#define PORT 8080
-#define BUFFER_SIZE 1024
-//#define SERVER_IP "192.168.100.201"
-#define SERVER_IP "192.168.128.83"
-//#define SERVER_IP "127.0.0.1"
-
 char agent_id[32];
 AgentCapabilities capabilities;
 int flags;
 
-void execute_task(Task* task) {
-    char cmd[BUFFER_SIZE];
-    snprintf(cmd, BUFFER_SIZE, "%s %s", task->executable_path, task->arguments);
-    
-    FILE* fp = popen(cmd, "r");
-    pclose(fp);
-}
 
 int init_connection(){
     int sock = 0;
@@ -44,10 +31,27 @@ int init_connection(){
         return -1;
     }
 
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        printf("Connection Failed\n");
-        return -1;
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0) {
+       printf("Successfull connection with server...\n");
+        Agent *agent = malloc(sizeof(Agent));
+        strcpy(agent->id, agent_id);
+        agent->capabilities = capabilities;
+        agent->flags = flags;
+        agent->is_busy = 0;
+        if (send_message(sock, MSG_AGENT_REGISTER, NULL, 0) != 0)
+        {
+            printf("Could not send agent info");
+        }
+        if (send_message(sock, MSG_AGENT_REGISTER, agent, sizeof(agent)) != 0)
+        {
+            printf("Could not send agent info");
+        }
     }
+    else{
+        printf("Connection error with server...\n");
+        exit(-1);
+    }
+
     return sock;
 }
 
@@ -230,47 +234,21 @@ int main(int argc, char* argv[]) {
 
     initializeAgent(argv[1]);
     
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in server_addr;
-    
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
-    inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
-    
-    if(connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0){
-        printf("Successfull connection with server...\n");
-        Agent *agent = malloc(sizeof(Agent));
-        strcpy(agent->id, agent_id);
-        agent->capabilities = capabilities;
-        agent->flags = flags;
-        agent->is_busy = 0;
-        if (send_message(sock, MSG_AGENT_REGISTER, agent, sizeof(agent)) != 0)
-        {
-            printf("Could not send agent info");
-        }
-    }
-    else{
-        printf("Connection error with server...\n");
-    }
+    int sock = init_connection();
 
+    MessageHeader header;
+    char buffer[MAX_PAYLOAD_SIZE];
+    size_t size;
     
     while(1) {
-        char buffer[BUFFER_SIZE];
-        int read_size = recv(sock, buffer, BUFFER_SIZE, 0);
-        if(read_size <= 0) break;
-
-
-        buffer[read_size] = 0;
-        printf("Task from server: %s, (len = %d)\n", buffer, read_size);
-
-        char* command[255];
-
-        ParseCommand(buffer, command);
-
-        ExecuteTask(command);
-        
-        //Task* task = (Task*)buffer;
-        //execute_task(task);
+        if(receive_message(sock, &header, buffer, size) < 0)
+        {
+            return -1;
+        }
+        if(header.type == MSG_SERVER_CLOSE)
+        {
+            return 0;
+        }
     }
     
     return 0;

@@ -2,7 +2,7 @@
 CC = gcc
 
 # Flags
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra -g 
 
 # Targets
 TARGETS = server agent client
