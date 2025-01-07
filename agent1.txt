@@ -2,4 +2,4 @@
 # Format:
 # agent_id, can_execute_binary, has_gpu, memory_mb, flags
 #
-AGENT001, 1, 0, 4096, 3
+AGENT001, 1, 0, 4096, 1

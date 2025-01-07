@@ -90,8 +90,10 @@ int ReceiveFile(int socket, const char* file_path) {
     return 0;
 }
 
-void ExecuteTask(char* command[])
+//TODO 1 schimba aici sa poti trimite rezultatul serverului
+void ExecuteTask2(char* command[])
 {
+    printf("Start executing task\n");
     pid_t pid1, pid2;
     int status;
     int redirect_index = -1;
@@ -173,8 +175,60 @@ void ExecuteTask(char* command[])
     if (pipe_index != -1) {
         waitpid(pid2, &status, 0);
     }
+}
 
-    
+//second function for execute task
+void ExecuteTask(char* command[], char** result) {
+    char temp_file[] = "/tmp/task_result_XXXXXX";
+    int fd = mkstemp(temp_file); // Creează fișier temporar
+    if (fd == -1) {
+        perror("mkstemp error");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Proces copil
+        dup2(fd, STDOUT_FILENO); // Redirecționează stdout către fișier
+        dup2(fd, STDERR_FILENO); // (opțional) Redirecționează și stderr
+        close(fd);
+
+        if (execvp(command[0], command) == -1) {
+            perror("execvp error");
+            exit(EXIT_FAILURE);
+        }
+    } else if (pid > 0) {
+        // Proces părinte
+        close(fd); // Închide descriptorul în părinte
+        wait(NULL); // Așteaptă copilul să termine
+
+        // Citește conținutul fișierului
+        FILE* file = fopen(temp_file, "r");
+        if (!file) {
+            perror("fopen error");
+            exit(EXIT_FAILURE);
+        }
+
+        fseek(file, 0, SEEK_END);
+        size_t size = ftell(file);
+        rewind(file);
+
+        *result = malloc(size + 1);
+        if (!*result) {
+            perror("malloc error");
+            exit(EXIT_FAILURE);
+        }
+
+        fread(*result, 1, size, file);
+        (*result)[size] = '\0';
+
+        fclose(file);
+
+        // Șterge fișierul temporar
+        unlink(temp_file);
+    } else {
+        perror("fork error");
+    }
 }
 
 void ParseCommand(char *input, char *command[]) {
@@ -224,32 +278,101 @@ void initializeAgent(const char* agentFile)
     fclose(file);
 }
 
+void ProcessTask(int sock, Task* task) {
+    printf("Received task ID: %d\n", task->task_id);
+    
+    // Task validation
+    if (task->min_memory > capabilities.memory_mb) {
+        printf("Error: Task requires more memory than available\n");
+        const char* error_msg = "Insufficient memory";
+        //send_message(sock, MSG_ERROR, error_msg, strlen(error_msg));
+        return;
+    }
+
+    if (task->requires_gpu && !capabilities.has_gpu) {
+        printf("Error: Task requires GPU but none available\n");
+        const char* error_msg = "GPU not available";
+        //send_message(sock, MSG_ERROR, error_msg, strlen(error_msg));
+        return;
+    }
+
+    printf("Executing task with arguments: %s\n", task->arguments);
+
+    // Parse command
+    char *command[256];
+    ParseCommand(task->arguments, command);
+
+    //execute command
+    char* result = NULL;
+    ExecuteTask(command, &result);
+
+    TaskResult task_result = {
+        .task_id = task->task_id,
+        .status_code = 0
+    };
+    strncpy(task_result.result, result, sizeof(task_result.result) - 1);
+    task_result.result[sizeof(task_result.result) - 1] = '\0';
+    
+    if (send_message(sock, MSG_TASK_COMPLETE, &task_result, sizeof(TaskResult)) < 0) {
+        printf("Failed to send task completion message\n");
+    } else {
+        printf("Task result sent successfully for task %d\n", task->task_id);
+    }
+    
+    free(result);
+}
+
 int main(int argc, char* argv[]) {
     printf("Agent starting running...\n");
-
+    
     if(argc != 2) {
         printf("Usage: %s <agent_file>\n", argv[0]);
         return 1;
     }    
 
     initializeAgent(argv[1]);
-    
     int sock = init_connection();
 
     MessageHeader header;
-    char buffer[MAX_PAYLOAD_SIZE];
-    size_t size;
-    
     while(1) {
-        if(receive_message(sock, &header, buffer, size) < 0)
-        {
-            return -1;
+        // Primeste header-ul mesajului
+        if (receive_message(sock, &header, NULL, 0) < 0) {
+            printf("Error receiving message header\n");
+            break;
         }
-        if(header.type == MSG_SERVER_CLOSE)
-        {
-            return 0;
+
+        switch (header.type) {
+            case MSG_TASK_ASSIGN: {
+                Task task;
+                if (receive_message(sock, &header, &task, sizeof(Task)) < 0) {
+                    printf("Error receiving task data\n");
+                    continue;
+                }
+                printf("Argumente task : %s", task.arguments);
+                ProcessTask(sock, &task);
+                break;
+            }
+            
+            case MSG_SERVER_CLOSE:
+                printf("Server shutting down. Closing agent...\n");
+                close(sock);
+                return 0;
+                
+            case MSG_ERROR:
+                //char error_msg[256];
+                //if (receive_message(sock, &header, error_msg, sizeof(error_msg)) < 0) {
+                //    printf("Error receiving error message\n");
+                //    continue;
+                //}
+                //printf("Received error from server: %s\n", error_msg);
+                break;
+                
+            default:
+                printf("Unknown message type: %d\n", header.type);
+                break;
         }
     }
     
+    close(sock);
     return 0;
 }

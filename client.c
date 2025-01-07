@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include "common.h"
 #include "protocol.h"
@@ -64,7 +65,7 @@ int main(int argc, const char* argv[]) {
                     connect_to_server();
                     break;
                 case 1:
-                    automatic_task();
+                    //automatic_task();
                     break;
                 case 2:
                     type_task();
@@ -100,6 +101,7 @@ int main(int argc, const char* argv[]) {
 }
 
 void connect_to_server() {
+
     struct sockaddr_in server_address;
 
     // Create a socket
@@ -128,30 +130,52 @@ void connect_to_server() {
     {
         printf("Connected to server at %s:%d\n", SERVER_IP, PORT);
 
+        // Set socket to non-blocking mode
+        int flags = fcntl(client_socket, F_GETFL, 0);
+        if (flags == -1) {
+            perror("fcntl F_GETFL failed");
+            close(client_socket);
+            return;
+        }
+        if (fcntl(client_socket, F_SETFL, flags | O_NONBLOCK) == -1) {
+            perror("fcntl F_SETFL failed");
+            close(client_socket);
+            return;
+        }
+        
         Client *client = malloc(sizeof(Client));
         strcpy(client->client_id, clientID);
         
         //send header first
-        if ( send_message(client_socket, MSG_CLIENT_REGISTER, NULL, 0) != 0)
+        if ( send_message(client_socket, MSG_CLIENT_REGISTER, NULL, 0) < 0)
         {
             printf("Could not send message.\n");
-            return -1;
+            return;
+        }
+        else
+        {
+            printf("Header sent succesfully\n");
         }
 
-        if (send_message(client_socket, MSG_CLIENT_REGISTER, client, sizeof(Client)) != 0)
+        if (send_message(client_socket, MSG_CLIENT_REGISTER, client, sizeof(Client)) < 0)
         {
             printf("Could not send client info.\n");
-            return -1;
+            return;
+        }
+        else
+        {
+            printf("Msg sent succesfully\n");
         }
         free(client);
     }
-
-    getchar(); // Wait for user input to proceed
+    
+    printf("Press any key...");
+    getchar();
 }
 
-void automatic_task()
-{
-
+int GenerateTaskID() {
+    time_t now = time(NULL);
+    return (int)now;
 }
 
 void type_task() {
@@ -162,8 +186,7 @@ void type_task() {
     newt.c_lflag |= ECHO;
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
     
-    // Buffer pentru citirea datelor
-    char task_buff[BUFFER_SIZE];
+    char task_buff[256];
     Task* task = malloc(sizeof(Task));
     if (task == NULL) {
         perror("Memory allocation failed");
@@ -171,11 +194,14 @@ void type_task() {
         return;
     }
 
-    // Solicită introducerea detaliilor pentru task
     printf("Enter the task command: ");
-    fgets(task_buff, BUFFER_SIZE, stdin);
-    task_buff[strcspn(task_buff, "\n")] = 0; // Elimină newline-ul final
+    fgets(task->arguments, sizeof(task->arguments), stdin);
+    task->arguments[strcspn(task->arguments, "\n")] = 0;
+    //fgets(task_buff, BUFFER_SIZE, stdin);
+    //task_buff[strcspn(task_buff, "\n")] = 0;
     printf("Task recorded: %s\n", task_buff);
+    //scanf("%s", &task->arguments);
+    //strcpy(task->arguments, task_buff);
 
     printf("Does the task require GPU? (1 for Yes, 0 for No): ");
     scanf("%d", &task->requires_gpu);
@@ -189,16 +215,28 @@ void type_task() {
     printf("Should the task run asynchronously? (1 for Yes, 0 for No): ");
     scanf("%d", &task->is_async);
 
-    if (send_message(client_socket, MSG_TASK_ASSIGN, task, sizeof(Task)) < 0) {
-        perror("Failed to send task to client");
-    } else {
-        printf("Task sent to client successfully.\n");
+    task->task_id = GenerateTaskID();
+
+    printf("PRESS ENTER to sent task\nPress anything else to leave...\n");
+    char key = getchar();
+    if(key == '\n')
+    {
+        //first send the header
+        if (send_message(client_socket, MSG_TASK_ASSIGN, NULL, 0) < 0) {
+            perror("Failed to send task to client");
+        }
+
+        if (send_message(client_socket, MSG_TASK_ASSIGN, task, sizeof(Task)) < 0) {
+            perror("Failed to send task to client");
+        } else {
+            printf("Task with id %d sent to server successfully.\n", task->task_id);
+        }
     }
 
     free(task);
 
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-    getchar(); // Consumă newline-ul rămas
+    getchar(); // Consuma newline-ul ramas
 }
 
 void select_task() {
@@ -247,7 +285,29 @@ void send_task() {
 }
 
 void task_status() {
-    printf("[Not implemented] Task status.\n");
+    printf("Enter Task ID to check status: ");
+    int task_id;
+    scanf("%d", &task_id);
+    if (send_message(client_socket, MSG_TASK_STATUS, NULL, 0) < 0) {
+        printf("Failed to request task status\n");
+        return;
+    }
+    else if (send_message(client_socket, MSG_TASK_STATUS, &task_id, sizeof(int)) < 0) {
+        printf("Failed to request task status\n");
+        return;
+    }
+
+    MessageHeader header;
+    TaskResult result;
+    if (receive_message(client_socket, &header, &result, sizeof(TaskResult)) >= 0) {
+        //if (header.type == MSG_TASK_RESULT) {
+            printf("Task %d result:\n%s\n", result.task_id, result.result);
+        //} else {
+            //printf("Unexpected message type\n");
+        //}
+    } else {
+        printf("Failed to receive task status\n");
+    }
     getchar();
 }
 

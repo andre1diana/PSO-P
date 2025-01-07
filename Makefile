@@ -2,7 +2,7 @@
 CC = gcc
 
 # Flags
-CFLAGS = -Wall -Wextra -g 
+CFLAGS = -Wall -Wextra -g
 
 # Targets
 TARGETS = server agent client
@@ -32,10 +32,10 @@ run_server: server
 	./server
 
 run_agent: agent
-	./agent
+	./agent agent1.txt
 
 run_client: client
-	./client
+	./client CLIENT1
 
 # Cleanup generated files
 clean:

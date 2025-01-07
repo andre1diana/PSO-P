@@ -19,6 +19,7 @@ typedef enum {
     MSG_TASK_ASSIGN,
     MSG_TASK_RESULT,
     MSG_TASK_STATUS,
+    MSG_TASK_COMPLETE,
     MSG_ERROR
 } MessageType;
 

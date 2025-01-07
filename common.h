@@ -18,20 +18,11 @@
 
 #define SERVER_IP "127.0.0.1"
 
-// Tipuri de mesaje
-enum MessageType {
-    REGISTER_AGENT,
-    SUBMIT_TASK,
-    TASK_RESULT,
-    TASK_ASSIGNMENT
-};
-
 // Structura pentru specializarile agentului
 typedef struct {
     int can_execute_binary;
     int has_gpu;
     int memory_mb;
-    // Altele
 } AgentCapabilities;
 
 enum AgentCapabilitiesFlags {
