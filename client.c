@@ -8,14 +8,14 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <time.h>
+#include <sys/select.h>
 
 #include "common.h"
 #include "protocol.h"
 
-#define MENU_OPTIONS 7
+#define MENU_OPTIONS 6
 
 void connect_to_server();
-void automatic_task();
 void type_task();
 void select_task();
 void send_task();
@@ -24,9 +24,21 @@ void cleanup_and_exit();
 void print_menu(int selected);
 bool is_executable(const char *filepath);
 
+
 char task_buff[BUFFER_SIZE];
 int client_socket = -1;
 char clientID[32];
+
+
+int sock_available_to_read(int sock) {
+    fd_set fds;
+    struct timeval tv;
+    FD_ZERO(&fds);
+    FD_SET(sock, &fds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    return select(sock + 1, &fds, NULL, NULL, &tv);
+}
 
 int main(int argc, const char* argv[]) {
 
@@ -65,34 +77,35 @@ int main(int argc, const char* argv[]) {
                     connect_to_server();
                     break;
                 case 1:
-                    //automatic_task();
-                    break;
-                case 2:
                     type_task();
                     break;
-                case 3:
+                case 2:
                     select_task();
                     break;
-                case 4:
+                case 3:
                     send_task();
                     break;
-                case 5:
+                case 4:
                     task_status();
                     break;
-                case 6:
+                case 5:
                     cleanup_and_exit();
                     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
                     exit(0);
             }
         }
-        MessageHeader header;
-        void* payload;
-        if (receive_message(client_socket, &header, payload, MAX_PAYLOAD_SIZE) == 0)
+
+        if (sock_available_to_read(client_socket) > 0)
         {
-            if(header.type == MSG_SERVER_CLOSE)
+            MessageHeader header;
+            void* payload;
+            if (receive_message(client_socket, &header, payload, MAX_PAYLOAD_SIZE) == 0)
             {
-                printf("Server deconected.\n");
-                getchar();
+                if(header.type == MSG_SERVER_CLOSE)
+                {
+                    printf("Server deconected.\n");
+                    getchar();
+                }
             }
         }
     }
@@ -137,7 +150,7 @@ void connect_to_server() {
             close(client_socket);
             return;
         }
-        if (fcntl(client_socket, F_SETFL, flags | O_NONBLOCK) == -1) {
+        if (fcntl(client_socket, F_SETFL, flags) == -1) {
             perror("fcntl F_SETFL failed");
             close(client_socket);
             return;
@@ -146,7 +159,6 @@ void connect_to_server() {
         Client *client = malloc(sizeof(Client));
         strcpy(client->client_id, clientID);
         
-        //send header first
         if ( send_message(client_socket, MSG_CLIENT_REGISTER, NULL, 0) < 0)
         {
             printf("Could not send message.\n");
@@ -221,7 +233,6 @@ void type_task() {
     char key = getchar();
     if(key == '\n')
     {
-        //first send the header
         if (send_message(client_socket, MSG_TASK_ASSIGN, NULL, 0) < 0) {
             perror("Failed to send task to client");
         }
@@ -236,7 +247,7 @@ void type_task() {
     free(task);
 
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-    getchar(); // Consuma newline-ul ramas
+    getchar(); // Waste the remaining newline
 }
 
 void select_task() {
@@ -285,29 +296,64 @@ void send_task() {
 }
 
 void task_status() {
-    printf("Enter Task ID to check status: ");
-    int task_id;
-    scanf("%d", &task_id);
+    struct termios oldt, newt;
+
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag |= ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+
     if (send_message(client_socket, MSG_TASK_STATUS, NULL, 0) < 0) {
-        printf("Failed to request task status\n");
-        return;
-    }
-    else if (send_message(client_socket, MSG_TASK_STATUS, &task_id, sizeof(int)) < 0) {
         printf("Failed to request task status\n");
         return;
     }
 
     MessageHeader header;
     TaskResult result;
-    if (receive_message(client_socket, &header, &result, sizeof(TaskResult)) >= 0) {
-        //if (header.type == MSG_TASK_RESULT) {
-            printf("Task %d result:\n%s\n", result.task_id, result.result);
-        //} else {
-            //printf("Unexpected message type\n");
-        //}
-    } else {
-        printf("Failed to receive task status\n");
+    int received_count = 0;
+
+    printf("Receiving all results from the server...\n");
+
+    while (1) {
+        int var = receive_message(client_socket, &header, NULL, 0);
+        if ( var < 0) {
+            perror("Failed to receive message header");
+            printf("   %d   \n", var);
+            break;
+        }
+
+        // Check if the message is a task result
+        if (header.type == MSG_TASK_RESULT) 
+        {
+            // Receive the task result payload
+            if (receive_message(client_socket, &header, &result, sizeof(TaskResult)) >= 0) 
+            {
+                if (result.status_code == -100)
+                {
+                    printf("No results found for client\n");
+                    break;
+                }
+                printf("Received result for task %d:\n%s\n", result.task_id, result.result);
+                received_count++;
+            } 
+            else 
+            {
+                perror("Failed to receive task result payload");
+                break;
+            }
+        } 
+        else 
+        {
+            // If the message is not a task result, stop listening
+            printf("No more results to receive.\n");
+            break;
+        }
     }
+
+    printf("Total results received: %d\n", received_count);
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
     getchar();
 }
 
@@ -322,7 +368,6 @@ void cleanup_and_exit() {
 void print_menu(int selected) {
     const char *options[MENU_OPTIONS] = {
         "Connect to server",
-        "Automatic task",
         "Type task",
         "Select task",
         "Send task",

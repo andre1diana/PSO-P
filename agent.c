@@ -18,7 +18,8 @@ int init_connection(){
     int sock = 0;
     struct sockaddr_in serv_addr;
 
-    if ((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+    if ((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) 
+    {
         printf("Socket creation error\n");
         return -1;
     }
@@ -26,23 +27,25 @@ int init_connection(){
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
 
-    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) 
+    {
         printf("Invalid address/ Address not supported\n");
         return -1;
     }
 
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0) {
-       printf("Successfull connection with server...\n");
-        Agent *agent = malloc(sizeof(Agent));
-        strcpy(agent->id, agent_id);
-        agent->capabilities = capabilities;
-        agent->flags = flags;
-        agent->is_busy = 0;
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0) 
+    {
+        printf("Successfull connection with server...\n");
+        Agent agent; // = malloc(sizeof(Agent));
+        strcpy(agent.id, agent_id);
+        agent.capabilities = capabilities;
+        agent.flags = flags;
+        agent.is_busy = 0;
         if (send_message(sock, MSG_AGENT_REGISTER, NULL, 0) != 0)
         {
             printf("Could not send agent info");
         }
-        if (send_message(sock, MSG_AGENT_REGISTER, agent, sizeof(agent)) != 0)
+        else if (send_message(sock, MSG_AGENT_REGISTER, &agent, sizeof(agent)) != 0)
         {
             printf("Could not send agent info");
         }
@@ -90,7 +93,6 @@ int ReceiveFile(int socket, const char* file_path) {
     return 0;
 }
 
-//TODO 1 schimba aici sa poti trimite rezultatul serverului
 void ExecuteTask2(char* command[])
 {
     printf("Start executing task\n");
@@ -177,10 +179,10 @@ void ExecuteTask2(char* command[])
     }
 }
 
-//second function for execute task
+//Second function for execute task
 void ExecuteTask(char* command[], char** result) {
     char temp_file[] = "/tmp/task_result_XXXXXX";
-    int fd = mkstemp(temp_file); // Creează fișier temporar
+    int fd = mkstemp(temp_file); // Create a temporary file
     if (fd == -1) {
         perror("mkstemp error");
         exit(EXIT_FAILURE);
@@ -188,9 +190,8 @@ void ExecuteTask(char* command[], char** result) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        // Proces copil
-        dup2(fd, STDOUT_FILENO); // Redirecționează stdout către fișier
-        dup2(fd, STDERR_FILENO); // (opțional) Redirecționează și stderr
+        //Child process
+        dup2(fd, STDOUT_FILENO); // Redirecționează stdout către fișier // Redirect stdout to file
         close(fd);
 
         if (execvp(command[0], command) == -1) {
@@ -198,11 +199,11 @@ void ExecuteTask(char* command[], char** result) {
             exit(EXIT_FAILURE);
         }
     } else if (pid > 0) {
-        // Proces părinte
-        close(fd); // Închide descriptorul în părinte
-        wait(NULL); // Așteaptă copilul să termine
+        // Parent process
+        close(fd); // Close the descriptor in parent
+        wait(NULL); // Wait for child to finish
 
-        // Citește conținutul fișierului
+        // Read the file content
         FILE* file = fopen(temp_file, "r");
         if (!file) {
             perror("fopen error");
@@ -224,7 +225,7 @@ void ExecuteTask(char* command[], char** result) {
 
         fclose(file);
 
-        // Șterge fișierul temporar
+        // Delete temporary file
         unlink(temp_file);
     } else {
         perror("fork error");
@@ -254,7 +255,7 @@ void initializeAgent(const char* agentFile)
 
     char line[256];
     while (fgets(line, sizeof(line), file)) {
-        // Ignor liniile care sunt comentarii sau goale
+        // Ignore comment or empty lines
         if (line[0] == '#' || strlen(line) <= 1) {
             continue;
         }
@@ -267,7 +268,7 @@ void initializeAgent(const char* agentFile)
                &capabilities.memory_mb,
                &flags);
 
-        // Afisam datele pentru verificare
+        // Display data for verification
         printf("Agent ID: %s\n", agent_id);
         printf("  Can Execute Binary: %d\n", capabilities.can_execute_binary);
         printf("  Has GPU: %d\n", capabilities.has_gpu);
@@ -302,7 +303,7 @@ void ProcessTask(int sock, Task* task) {
     char *command[256];
     ParseCommand(task->arguments, command);
 
-    //execute command
+    // Execute command
     char* result = NULL;
     ExecuteTask(command, &result);
 
@@ -335,7 +336,6 @@ int main(int argc, char* argv[]) {
 
     MessageHeader header;
     while(1) {
-        // Primeste header-ul mesajului
         if (receive_message(sock, &header, NULL, 0) < 0) {
             printf("Error receiving message header\n");
             break;
@@ -348,7 +348,7 @@ int main(int argc, char* argv[]) {
                     printf("Error receiving task data\n");
                     continue;
                 }
-                printf("Argumente task : %s", task.arguments);
+                printf("Argumente task : %s\n", task.arguments);
                 ProcessTask(sock, &task);
                 break;
             }

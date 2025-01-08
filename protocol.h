@@ -34,22 +34,23 @@ typedef struct {
 } MessageHeader;
 
 // Structuri pentru diferite tipuri de mesaje
-typedef struct {
-    char agent_id[32];
-    uint32_t capabilities_flags;
-    uint32_t memory_available;
-} AgentRegistration;
+//typedef struct {
+//   char agent_id[32];
+//    uint32_t capabilities_flags;
+//    uint32_t memory_available;
+//} AgentRegistration;
 
-typedef struct {
-    char command[MAX_COMMAND_SIZE];
-    char arguments[MAX_ARGS_SIZE];
-    uint32_t requirements_flags;
-    uint32_t timeout;
-} TaskSubmission;
+//typedef struct {
+//    char command[MAX_COMMAND_SIZE];
+//   char arguments[MAX_ARGS_SIZE];
+//    uint32_t requirements_flags;
+//    uint32_t timeout;
+//} TaskSubmission;
 
 typedef struct {
     uint32_t task_id;
     int32_t status_code;
+    int client_sock;
     char result[MAX_PAYLOAD_SIZE];
 } TaskResult;
 

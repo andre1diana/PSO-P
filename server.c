@@ -9,6 +9,7 @@
 #include <asm-generic/socket.h>
 #include <signal.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 #include "common.h"
 #include "protocol.h"
@@ -72,16 +73,34 @@ int Listen(int* server_fd)
     return 0;
 }
 
-void SaveClient(int client_fd)
-{
-    MessageHeader header;
-    if (clients_iterator < MAX_CLIENTS) 
-    {
-        if (receive_message(client_fd, &header, &clients[clients_iterator], sizeof(Client)) < 0)
-        {
-            printf("Error receiving client info\n");
-            return;
+bool is_client_registered(const char* client_id) {
+    for(int i = 0; i < clients_iterator; i++) {
+        if(strcmp(clients[i].client_id, client_id) == 0) {
+            printf("[DEBUG] Client %s is already registered\n", client_id);
+            return true;
         }
+    }
+    printf("[DEBUG] Client %s is not registered yet\n", client_id);
+    return false;
+}
+
+void SaveClient(int client_fd) {
+    MessageHeader header;
+    Client temp_client;
+    
+    if(receive_message(client_fd, &header, &temp_client, sizeof(Client)) < 0) {
+        printf("Error receiving client info\n");
+        return;
+    }
+
+    if(is_client_registered(temp_client.client_id)) {
+        printf("Client with ID %s already exists. Rejecting connection.\n", temp_client.client_id);
+        close(client_fd);
+        return;
+    }
+
+    if (clients_iterator < MAX_CLIENTS) {
+        memcpy(&clients[clients_iterator], &temp_client, sizeof(Client));
         clients[clients_iterator].socket = client_fd;
         printf("Client registered: %s\n", clients[clients_iterator].client_id);
         clients_iterator++;
@@ -91,21 +110,48 @@ void SaveClient(int client_fd)
     }
 }
 
+bool is_agent_registered(const char* agent_id) 
+{
+    for(int i = 0; i < agents_iterator; i++) {
+        if(strcmp(agents[i].id, agent_id) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void SaveAgent(int agent_fd)
 {
     MessageHeader header;
-    if (agents_iterator < MAX_AGENTS) 
+    Agent temp_agent;
+
+    if(receive_message(agent_fd, &header, &temp_agent, sizeof(Agent)) < 0)
     {
-        if(receive_message(agent_fd, &header, &agents[agents_iterator], sizeof(Agent)) < 0)
-        {
-            printf("Agent info not received\n");
-            return;
-        }
+        printf("Agent info not received\n");
+        return;
+    }
+
+    if(is_agent_registered(temp_agent.id)) 
+    {
+        printf("Agent with ID %s already exists. Rejecting connection.\n", temp_agent.id);
+        close(agent_fd);
+        return;
+    }
+
+    if (agents_iterator < MAX_AGENTS) {
+        memcpy(&agents[agents_iterator], &temp_agent, sizeof(Agent));
         agents[agents_iterator].socket = agent_fd;
         agents[agents_iterator].is_busy = 0;
         printf("Agent registered: %s\n", agents[agents_iterator].id);
         agents_iterator++;
-    } else {
+        printf("Agent info : %s == %d == %d == %d\n", 
+            agents[agents_iterator - 1].id, 
+            agents[agents_iterator - 1].capabilities.memory_mb, 
+            agents[agents_iterator - 1].capabilities.has_gpu, 
+            agents[agents_iterator - 1].flags);
+    }
+    else 
+    {
         printf("Max agents reached. Rejecting connection.\n");
         close(agent_fd);
     }
@@ -135,24 +181,29 @@ void RemoveClient(int client_fd) {
     }
 }
 
-//TODO rezolva functia asta sa mearga 
 Agent* find_available_agent(Task* task) 
 {
     for(int i = 0; i < agents_iterator; i++) 
     {
         Agent* agent = &agents[i];
-        pthread_mutex_lock(&agents[i].lock);
-         if (!agent->is_busy &&
+        
+        printf("\n[DEBUG] Checking agent %s:\n", agent->id);
+        printf("- Busy: %d\n", agent->is_busy);
+        printf("- Memory: %d MB\n", agent->capabilities.memory_mb);
+        printf("- Has GPU: %d\n", agent->capabilities.has_gpu);
+        printf("- Flags: %d\n", agent->flags);
+
+        if (!agent->is_busy &&
             agent->capabilities.memory_mb >= task->min_memory &&
             (!task->requires_gpu || agent->capabilities.has_gpu) &&
             (agent->flags & task->flags) == task->flags) 
         {
+            printf("[DEBUG] Found suitable agent: %s\n", agent->id);
             agents[i].is_busy = 1;
-            pthread_mutex_unlock(&agents[i].lock);
             return &agents[i];
         }
-        pthread_mutex_unlock(&agents[i].lock);
     }
+    printf("[DEBUG] No suitable agent found\n");
     return NULL;
 }
 
@@ -161,7 +212,6 @@ void EnqueueTask(Task* task) {
     
     if (task_count < MAX_TASKS) {
         task_queue[task_count] = *task;
-        task_queue[task_count].task_id = task_count;
         task_count++;
         printf("Task enqueued. Task ID: %d\n", task->task_id);
     } else {
@@ -169,73 +219,6 @@ void EnqueueTask(Task* task) {
     }
     
     pthread_mutex_unlock(&queue_mutex);
-}
-
-void* ProcessTasks2(void* arg) {
-    while (1) {
-        Task* current_task = NULL;
-        Agent* assigned_agent = NULL;
-        TaskResult task_result;
-        MessageHeader header;
-        
-        pthread_mutex_lock(&queue_mutex);
-        if (task_count > 0) {
-            current_task = malloc(sizeof(Task));
-            memcpy(current_task, &task_queue[0], sizeof(Task));
-                        
-            for (int i = 0; i < task_count - 1; i++) {
-                task_queue[i] = task_queue[i + 1];
-            }
-            task_count--;
-        }
-        pthread_mutex_unlock(&queue_mutex);
-        
-        if (current_task != NULL) 
-        {
-            pthread_mutex_lock(&agents_mutex);
-            assigned_agent = &agents[agents_iterator - 1];//find_available_agent(current_task);
-            
-            if (assigned_agent) 
-            {
-                printf("Assigning task %d to agent %s\n", current_task->task_id, assigned_agent->id);
-
-                if (send_message(assigned_agent->socket, MSG_TASK_ASSIGN, NULL, 0) < 0) 
-                {
-                    printf("Error sending header\n");
-                } 
-                else if (send_message(assigned_agent->socket, MSG_TASK_ASSIGN, current_task, sizeof(Task)) < 0) 
-                {
-                    printf("Error sending task to agent %s\n", assigned_agent->id);
-                    assigned_agent->is_busy = 0; // Reset busy status on error
-                } 
-                else 
-                {
-                    // Wait for result from agent
-                    TaskResult task_result;
-                    MessageHeader header;
-                    if (receive_message(assigned_agent->socket, &header, &task_result, sizeof(TaskResult)) >= 0) {
-                        pthread_mutex_lock(&result_mutex);
-                        if (result_count < MAX_TASKS) 
-                        {
-                            result_queue[result_count++] = task_result;
-                            printf("Task result for task %d received and queued\n", task_result.task_id);
-                        }
-                        pthread_mutex_unlock(&result_mutex);
-                    } 
-                    else 
-                    {
-                        printf("Failed to receive task result from agent\n");
-                    }
-                    assigned_agent->is_busy = 0; // Mark agent free again
-                }
-            }
-            
-            pthread_mutex_unlock(&agents_mutex);
-        }
-        
-        usleep(100000);
-    }
-    return NULL;
 }
 
 void* ProcessTasks(void* arg) {
@@ -250,15 +233,15 @@ void* ProcessTasks(void* arg) {
             current_task = malloc(sizeof(Task));
             memcpy(current_task, &task_queue[0], sizeof(Task));
 
-            // Mutăm taskurile rămase înainte în coadă
+            // Move remaining tasks up in the queue
             memmove(&task_queue[0], &task_queue[1], (task_count - 1) * sizeof(Task));
             task_count--;
             printf("[DEBUG] Task dequeued. Task ID: %d, Remaining tasks: %d\n", current_task->task_id, task_count);
             pthread_mutex_unlock(&queue_mutex);
 
-            // Caută un agent disponibil
+            // Find an available agent for the task
             pthread_mutex_lock(&agents_mutex);
-            assigned_agent = &agents[agents_iterator - 1]; //find_available_agent(current_task);
+            assigned_agent = find_available_agent(current_task);
             if (assigned_agent) {
                 assigned_agent->is_busy = 1;
                 int agent_socket = assigned_agent->socket;
@@ -266,15 +249,16 @@ void* ProcessTasks(void* arg) {
 
                 printf("[DEBUG] Task ID: %d assigned to agent: %s\n", current_task->task_id, assigned_agent->id);
 
-                // Trimite task-ul agentului
+                // Send task to agent
                 if (send_message(agent_socket, MSG_TASK_ASSIGN, NULL, 0) < 0) {
                     printf("[ERROR] Failed to send task header to agent %s\n", assigned_agent->id);
                 } else if (send_message(agent_socket, MSG_TASK_ASSIGN, current_task, sizeof(Task)) == 0) {
                     printf("[DEBUG] Task ID: %d sent to agent: %s\n", current_task->task_id, assigned_agent->id);
 
-                    // Așteaptă rezultatul taskului
+                    // Wait for result from agent
                     if (receive_message(agent_socket, &header, &task_result, sizeof(TaskResult)) >= 0) {
                         printf("[DEBUG] Task ID: %d result received from agent: %s\n", task_result.task_id, assigned_agent->id);
+                        task_result.client_sock = current_task->client_socket;
 
                         pthread_mutex_lock(&result_mutex);
                         if (result_count < MAX_TASKS) {
@@ -291,7 +275,7 @@ void* ProcessTasks(void* arg) {
                     printf("[ERROR] Failed to send task ID: %d to agent: %s\n", current_task->task_id, assigned_agent->id);
                 }
 
-                // Marchez agentul ca disponibil
+                // Mark agent as available
                 pthread_mutex_lock(&agents_mutex);
                 assigned_agent->is_busy = 0;
                 pthread_mutex_unlock(&agents_mutex);
@@ -300,7 +284,7 @@ void* ProcessTasks(void* arg) {
                 pthread_mutex_unlock(&agents_mutex);
                 printf("[DEBUG] No available agent for Task ID: %d. Task requeued.\n", current_task->task_id);
 
-                // Reintroducem taskul în coadă dacă nu există agent disponibil
+                // Put task back in the queue
                 pthread_mutex_lock(&queue_mutex);
                 if (task_count < MAX_TASKS) {
                     task_queue[task_count++] = *current_task;
@@ -316,7 +300,7 @@ void* ProcessTasks(void* arg) {
             pthread_mutex_unlock(&queue_mutex);
         }
 
-        usleep(100000); // Mică pauză pentru a evita supraîncărcarea CPU-ului
+        usleep(100000); // Small pause to avoid CPU overload
     }
     return NULL;
 }
@@ -326,7 +310,7 @@ void ManageTask(int client_fd) {
     Task task;
     MessageHeader header;
 
-    //receive task from client
+    //Receive task from client
     if (receive_message(client_fd, &header, &task, sizeof(Task)) < 0) {
         printf("Error receiving task from client_fd: %d\n", client_fd);
         return;
@@ -342,7 +326,7 @@ void handle_sigint(int sig)
     printf("\nReceived SIGINT (Ctrl+C). Shutting down server...\n");
     const char* shutdown_message = "Server shutting down. Disconnecting...";
 
-    // send shutdown signal to all agents and clients
+    // Send shutdown signal to all agents and clients
     for (int i = 0; i < agents_iterator; i++) 
     {
         send_message(agents[i].socket, MSG_SERVER_CLOSE, shutdown_message, strlen(shutdown_message));
@@ -360,30 +344,45 @@ void handle_sigint(int sig)
 
 void SendResultToClient(int client_fd) {
     MessageHeader header;
-    TaskResult result;
-    if (receive_message(client_fd, &header, &result, sizeof(TaskResult)) < 0)
-    {
-        printf("error\n");
-        return;
-    }
-
     pthread_mutex_lock(&result_mutex);
-    for (int i = 0; i < result_count; i++) {
-        if (result_queue[i].task_id == result.task_id) {
-            if (send_message(client_fd, MSG_TASK_RESULT, &result_queue[i], sizeof(TaskResult)) >= 0) {
-                printf("Result for task %d sent to client %d\n", result.task_id, client_fd);
+
+    int sent_count = 0;
+    printf("Results count: %d\n", result_count);
+    for (int i = 0; i < result_count; ) {
+        printf("Client socket: %d\n", client_fd);
+        printf("Client socket: %d\n", result_queue[i].client_sock);
+        if (result_queue[i].client_sock == client_fd) {
+            printf("Am fost aici\n");
+            if(send_message(client_fd, MSG_TASK_RESULT, NULL, 0) < 0)
+            {
+                printf("Error sending the header\n");   
+            }
+            else if (send_message(client_fd, MSG_TASK_RESULT, &result_queue[i], sizeof(TaskResult)) >= 0) {
+                printf("Result for task %d sent to client (fd: %d)\n", result_queue[i].task_id, client_fd);
+                sent_count++;
             } else {
-                printf("Failed to send result for task %d to client %d\n", result.task_id, client_fd);
+                printf("Failed to send result for task %d to client (fd: %d)\n", result_queue[i].task_id, client_fd);
             }
 
-            // Eliminate from queue
             result_queue[i] = result_queue[--result_count];
-            pthread_mutex_unlock(&result_mutex);
-            return;
+        } else {
+            i++;
         }
     }
+
     pthread_mutex_unlock(&result_mutex);
-    printf("No result found for task %d\n", result.task_id);
+
+    if (sent_count == 0) {
+        printf("No results found for client\n");
+        TaskResult res = {0};
+        res.status_code = -100;
+        send_message(client_fd, MSG_TASK_RESULT, NULL, 0);
+        send_message(client_fd, MSG_TASK_RESULT, &res, sizeof(TaskResult));
+        return;
+    } else {
+        printf("Total %d results sent to client\n", sent_count);
+    }
+    send_message(client_fd, MSG_TASK_COMPLETE, NULL, 0);
 }
 
 int main() {
@@ -394,7 +393,7 @@ int main() {
 
     signal(SIGINT, handle_sigint);
     
-    // initialize server
+    // Initialize server
     InitSockets(&server_fd, &address);
     Listen(&server_fd);
 
@@ -478,7 +477,7 @@ int main() {
                     case MSG_TASK_STATUS:
                         SendResultToClient(client_fd);
                     case MSG_ERROR:
-                        //TODO creeaza o functie care trimite clientului un mesaj de eroare pentru rezolvarea taskului
+                        //TODO Make a function that sends a message to the client with an error for the task resolution
                         break;
                     default:
                         printf("Unknown message type from socket %d.\n", client_fd);

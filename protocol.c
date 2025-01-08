@@ -25,12 +25,12 @@ int send_message(int socket, MessageType type, const void* payload, size_t paylo
         .checksum = calculate_checksum(payload, payload_size)
     };
     
-    // Trimite header
+    // Send header
     if (send(socket, &header, sizeof(header), MSG_NOSIGNAL) != sizeof(header)) {
         return -1;
     }
     
-    // Trimite payload daca exista
+    //Send payload if it exists
     if (payload_size > 0 && payload != NULL) {
         if (send(socket, payload, payload_size, MSG_NOSIGNAL) != (payload_size)) {
             return -1;
@@ -42,6 +42,13 @@ int send_message(int socket, MessageType type, const void* payload, size_t paylo
 
 int receive_message(int socket, MessageHeader* header, void* payload, size_t max_payload_size) {
     ssize_t received = recv(socket, header, sizeof(MessageHeader), MSG_WAITALL);
+    
+    //printf(" ======= received    %d\n", received);
+    //if(received == -1) {
+    //    sleep(100);
+    //    received = recv(socket, header, sizeof(MessageHeader), MSG_WAITALL);
+    //}
+
     if (received != sizeof(MessageHeader)) {
         return -1;
     }

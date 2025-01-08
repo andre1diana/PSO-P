@@ -18,7 +18,7 @@
 
 #define SERVER_IP "127.0.0.1"
 
-// Structura pentru specializarile agentului
+
 typedef struct {
     int can_execute_binary;
     int has_gpu;
@@ -35,7 +35,7 @@ enum AgentCapabilitiesFlags {
     REALTIME_PROCESSING = 1 << 6  // 0100 0000
 };
 
-// Structura pentru agent
+// Agent struct
 typedef struct {
     char id[32];
     int socket;
@@ -45,7 +45,7 @@ typedef struct {
     pthread_mutex_t lock;
 } Agent;
 
-// Structura pentru task
+// Task struct
 typedef struct {
     int task_id;
     char executable_path[256];
